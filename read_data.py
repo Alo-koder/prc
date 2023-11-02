@@ -1,6 +1,7 @@
 import pandas as pd
 from scipy.ndimage import gaussian_filter
 from scipy.signal import find_peaks
+import numpy as np
 
 def read_data(filename, p_height=0.5, margins=(100, 5000)):
     
@@ -26,7 +27,8 @@ def read_data(filename, p_height=0.5, margins=(100, 5000)):
     # df['U'] = gaussian_filter(df['U'], 1)
     
     # Finding voltage spikes
-    spike_indicies, _ = find_peaks(df['U'], prominence=p_height*0.8)
+    spike_indicies, _ = find_peaks(np.sign(p_height) * df['U'],
+                                   prominence=np.abs(p_height)*0.8)
     spikes = df.iloc[spike_indicies]
     
     return df, spikes

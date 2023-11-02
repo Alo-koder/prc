@@ -7,7 +7,7 @@ def find_periods(df):
     
     mean_current = df.mean()['I']
     df['I relative'] = df['I']-mean_current
-    crossings = df[(np.diff(np.sign(df['I relative']), append=0) > 0)]
+    crossings = df[(np.diff(np.sign(df['I relative']), append=-1) > 0)]
     periods = np.diff(crossings['t'])
     
     return periods, crossings['t'][:-1]
@@ -22,13 +22,21 @@ def find_periods(df):
 
 if __name__ == '__main__':
     df, pert = read_data('T:\\Team\\Szewczyk\\Data\\20231024\\raw\\A00102.dat',
-                         margins=(1800, 3400))
+                         margins=(2550, 3700), p_height=1)
     periods, crossings = find_periods(df)
     
     plt.scatter(crossings, periods, marker='+')
     plt.plot(crossings, periods)
     plt.vlines(pert['t'], 40, 50, colors='r', linestyles='dashed')
     
-    plt.ylim(40, 50)
+    plt.ylim(43, 47)
+    plt.title('Perturbation: +1V, 0.1s')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Osc. period [s]')
     plt.show()
     
+    plt.plot(df['t'], df['I'])
+    plt.xlabel('Time [s]')
+    plt.ylabel('Current [A]')
+    plt.vlines(pert['t'], 3e-6, 10e-6, colors='r', linestyles='dashed')
+    plt.show()
