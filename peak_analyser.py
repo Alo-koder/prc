@@ -7,7 +7,7 @@ from read_data import read_data
 # =============================================================================
 # Here go config params
 
-filename = 'T:\\Team\\Szewczyk\\Data\\20231024\\raw\\A00102.dat'
+filename = 'T:\\Team\\Szewczyk\\Data\\20231128\\A00400.dat'
 lower_cutoff = 1800
 upper_cutoff = 2080
 shift = 1826
