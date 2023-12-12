@@ -22,13 +22,13 @@ def read_data(filename, p_height=0.5, margins=(100, 5000)):
     df = df[(df['t'] > margins[0]) & (df['t'] < margins[1])]
     
     # Signal smoothening
-    df['I'] = gaussian_filter(df['I'], 5)
+    #df['I'] = gaussian_filter(df['I'], 5)
     df['EMSI'] = gaussian_filter(df['EMSI'], 2)
     # df['U'] = gaussian_filter(df['U'], 1)
     
     # Finding voltage spikes
     spike_indicies, _ = find_peaks(np.sign(p_height) * df['U'],
-                                   prominence=np.abs(p_height)*0.8)
+                                   prominence=np.abs(p_height)*0.8, distance=1000)
     spikes = df.iloc[spike_indicies]
     
     return df, np.array(spikes['t'])
