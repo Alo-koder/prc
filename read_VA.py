@@ -35,7 +35,7 @@ def read_VA(filename, p_height=0.1, margins=(100, 5000)):
                                    prominence=np.abs(p_height)*0.8, distance=1000)
     spikes = df.iloc[spike_indicies]
     
-    return df, np.array(spikes['t'])
+    return df.reset_index(), np.array(spikes['t'])
 
 
 if __name__ == '__main__':
