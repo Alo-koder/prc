@@ -1,20 +1,8 @@
-#from read_data import read_data
 from read_VA import read_VA
 from scipy.signal import find_peaks
 from matplotlib import pyplot as plt
-import pandas as pd
 import numpy as np
-
-# def find_periods(df, threshold_I_multiplier=0.9):
-    
-#     threshold_I = df.mean()['I']*threshold_I_multiplier
-#     df['I relative'] = df['I']-threshold_I
-#     crossings = df[(np.diff(np.sign(df['I relative']), append=1) < 0)]
-    
-#     crossings = np.array(crossings['t'])
-#     periods = np.diff(crossings)
-    
-#     return periods, np.array(crossings[:-1])
+import pandas as pd
 
 def find_cycles(df, threshold_I_multiplier=0.9, sign_change = -1):
     '''
@@ -51,13 +39,13 @@ def find_cycles(df, threshold_I_multiplier=0.9, sign_change = -1):
 
 
     #DEBUG This may throw an error! Last entry in durations should be NaN
-    unpurged_cycles = pd.DataFrame({'start': crossing_times,
-                           'duration': np.append(period_durations, np.nan)})
+    unpurged_cycles = pd.DataFrame('start': crossing_times,
+                           'duration': period_durations)
     
     # Remove false crossings (when period is too short)
     mean_period = np.mean(unpurged_cycles['duration'])
     cycles = unpurged_cycles[(unpurged_cycles['duration'] > 0.9*mean_period)]
-    cycles['duration'] = np.diff(cycles['start'], append=np.nan) #DEBUG Check df.assign
+    cycles['duration'] = np.diff(df['start']) #DEBUG Check df.assign
     cycles.drop(cycles.tail(1).index, inplace=True) # Drop last row
     
     return cycles
@@ -71,6 +59,9 @@ def find_cycles(df, threshold_I_multiplier=0.9, sign_change = -1):
 # =============================================================================
 
 def pert_response(crossings, mean_period, pert, periods):
+    '''
+    Calculate the 
+    '''
     indicies = np.searchsorted(crossings, np.array(pert))-1
     phase = (pert-crossings[indicies])/mean_period
     
@@ -88,37 +79,37 @@ def phase_correction(df, crossings):
     return np.average(times[:crossings.size]-crossings)
 
 
+
+
+
+
+
+
 if __name__ == '__main__':
+
+
+
+
+
+
     df, pert = read_VA('T:\\Team\\Szewczyk\\Data\\20231103\\A00201_C01.txt',
                          margins=(300, 4100), p_height=0.1)
-    cycles = find_cycles(df)
-    periods, crossings = np.array(cycles['duration']), np.array(cycles['start'])
+    periods = find_periods(df)
     
-    phase, response = pert_response(crossings, np.average(periods), pert, periods)
-    phase = (phase-phase_correction(df, crossings)/np.average(periods))%1
+    phase, response = pert_response(crossings, np.average(periods['duration']), pert, periods['duration'])
+    phase = (phase-phase_correction(df, crossings)/np.average(periods['duration']))%1
     plt.figure()
     plt.scatter(phase, response)
-    plt.title("INVALID FIT!!! DON'T USE")
+    # plt.title("INVALID FIT!!! DON'T USE")
     
 
     plt.figure()
-    plt.scatter(crossings, periods, marker='+')
-    plt.plot(crossings, periods)
+    plt.scatter(crossings, periods['duration'], marker='+')
+    plt.plot(crossings, periods['duration'])
     plt.vlines(pert, 40, 50, colors='r', linestyles='dashed')
     
-    #plt.xlim(2600, 2900)
+    
     plt.ylim(41, 42)
     plt.title('Perturbation: +1V, 0.1s')
     plt.xlabel('Time [s]')
     plt.ylabel('Osc. period [s]')
-    
-    
-    plt.figure()
-    #plt.xlim(700, 1000)
-    plt.hlines(df.mean()['I'], 1400, 1800, colors='y', linestyles='dashed')
-    plt.plot(df['t'], df['I'])
-    plt.xlabel('Time [s]')
-    plt.ylabel('Current [A]')
-    plt.scatter(pert, df[df['t'].isin(pert)]['I'], marker='x', c='r')
-    plt.vlines(crossings, 0.02, 0.14, colors='g', linestyles='dashdot')
-    plt.show()
