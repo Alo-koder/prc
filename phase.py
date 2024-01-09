@@ -16,7 +16,7 @@ import numpy as np
     
 #     return periods, np.array(crossings[:-1])
 
-def find_cycles(df, threshold_I_multiplier=0.9, sign_change = -1):
+def find_cycles(df, threshold_I_multiplier=0.9, sign_change = 1):
     '''
     Divide the signal into cycles by cutting when the current
     crosses a specific value.
@@ -129,12 +129,34 @@ def pert_response(cycles, pert_times):
 #     return np.average(times[:crossings.size]-crossings)
 
 
-def phase_correction(df, perts, mean_period):
+def phase_correction(df, perts, cycles, mean_period):
+    '''
+    Account for different phase determination method by offseting phase
+    such that max current means phase = 0.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Experimental data
+    perts : pd.DataFrame
+        Data on the perturbations
+    cycles : pd.DataFrame
+        Period data
+    mean_period : float
+        Mean cycle duration in seconds
+
+    Returns
+    -------
+    perts : pd.DataFrame
+        Updated perts dataframe with a new column: corrected_phase
+    correction : float
+        Average osc phase of current spikes (calculated with a relative method)
+    '''
     spikes, _ = find_peaks(df['I'], height=0.1, distance=1000)
     time_array = np.array(df['t'])
-    times = time_array[spikes]
-    size = min(times.size, perts.shape[0])
-    correction = np.average(times[:size]-perts['time'].iloc[:size])%mean_period/mean_period
+    spike_times = time_array[spikes]
+    size = min(spike_times.size, cycles.shape[0])
+    correction = np.average(spike_times[:size]-cycles['start'].iloc[:size])%mean_period/mean_period
     corrected_phase = (perts['phase']-correction)%1
     perts.drop(perts.tail(perts.shape[0]-size).index, inplace=True)
     perts = perts.assign(corrected_phase = corrected_phase)
@@ -142,44 +164,48 @@ def phase_correction(df, perts, mean_period):
     return perts, correction
 
 if __name__ == '__main__':
+
+    # Import and prepare data
     df, pert_times = read_VA('T:\\Team\\Szewczyk\\Data\\20231103\\A00201_C01.txt',
                          margins=(300, 4100), p_height=0.1)
     cycles, threshold_I = find_cycles(df)
-    # periods, crossings = np.array(cycles['duration']), np.array(cycles['start'])
     mean_period = np.mean(cycles['duration'])
 
+    # Calculate perturbation response
     perts = pert_response(cycles, pert_times)
-    # phase = perts['phase']
-    # response = perts['response']
-    # corrected_phase = (phase-phase_correction(df, crossings)/np.average(periods))%1
-    perts, correction = phase_correction(df, perts, mean_period)
-    
-    plt.figure()
-    plt.scatter(perts['corrected_phase'], perts['response'])
-    plt.vlines(correction, ymin = perts['response'].min(), ymax = perts['response'].max(), colors='r', linestyles='dashed')
-    plt.title("INVALID FIT!!! DON'T USE")
+    perts, correction = phase_correction(df, perts, cycles, mean_period)
     
 
+    # Plot PRC
     plt.figure()
+    plt.title("PRC -- INVALID FIT!!! DON'T USE")
+    plt.xlabel('Phase rel. to current spike (fractional)')
+    plt.ylabel('Phase response [s]')
+    plt.scatter(perts['corrected_phase'], perts['response'])
+    
+
+    # Plot periods vs time
+    plt.figure()
+    plt.title('Period length versus time')
     plt.scatter(cycles['start'], cycles['duration'], marker='+')
     plt.plot(cycles['start'], cycles['duration'])
-    plt.vlines(pert_times, 40, 50, colors='r', linestyles='dashed')
-    
-    #plt.xlim(2600, 2900)
-    plt.ylim(41, 42)
+    for x in pert_times:
+        plt.axvline(x, c='r', ls='--')
     plt.title('Perturbation: +1V, 0.1s')
     plt.xlabel('Time [s]')
     plt.ylabel('Osc. period [s]')
     
-    
+
+    # Plot current vs time
     plt.figure()
-    #plt.xlim(700, 1000)
-    plt.hlines(threshold_I, 1400, 1800, colors='y', linestyles='dashed')
+    plt.title('Current versus time')
+    plt.axhline(threshold_I, c='y', ls='dashed')
     plt.plot(df['t'], df['I'])
     plt.xlabel('Time [s]')
     plt.ylabel('Current [A]')
     plt.scatter(pert_times, df[df['t'].isin(pert_times)]['I'], marker='x', c='r')
-    plt.vlines(cycles['start'], 0.02, 0.14, colors='g', linestyles='dashdot')
+    for x in cycles['start']:
+        plt.axvline(x, c='g', ls='-.')
     plt.show()
 
 
