@@ -6,9 +6,9 @@ import numpy as np
 
 def find_periods(df):
     
-    mean_current = df.mean()['I']*1.1
+    mean_current = df.mean()['I']*0.9
     df['I relative'] = df['I']-mean_current
-    crossings = df[(np.diff(np.sign(df['I relative']), append=-1) > 0)]
+    crossings = df[(np.diff(np.sign(df['I relative']), append=1) < 0)]
     
     crossings = np.array(crossings['t'])
     periods = np.diff(crossings)
