@@ -151,7 +151,7 @@ def phase_correction(data, perts, cycles, mean_period):
 if __name__ == '__main__':
 
     # Import and prepare data
-    data, pert_times = read_data('T:\\Team\\Szewczyk\\Data\\20240109\\A00502_C01.mpr',
+    data, pert_times = read_data('~/munich/data/20240109/A00502_C01.mpr',
                          roi=(1000, 8999000), p_height=0.3)
     cycles, threshold_I = find_cycles(data, pert_times)
     mean_period = np.mean(cycles['duration'])
