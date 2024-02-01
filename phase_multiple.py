@@ -44,7 +44,7 @@ def phase_correction(df, crossings):
 
 
 if __name__ == '__main__':
-    df, pert = read_VA('T:\\Team\\Szewczyk\\Data\\20231103\\A00201_C01.txt',
+    df, pert = read_VA('~/munich/data/A00201_C01.txt',
                          margins=(300, 4100), p_height=0.1)
     phase_cors = []
     responses1 = []
