@@ -1,5 +1,0 @@
-plt.title('Period drift in time')
-plt.xlabel('t [s]')
-plt.ylabel('T [s]')
-plt.plot(crossings, periods)
-plt.show()
