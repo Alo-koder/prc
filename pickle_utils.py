@@ -3,9 +3,6 @@ import eclabfiles as ecf
 import numpy as np
 from datetime import datetime
 from scipy.optimize import minimize
-from scipy.interpolate import CubicSpline
-from matplotlib import pyplot as plt
-from scipy.ndimage import gaussian_filter1d
 
 def read_emsi(emsi_filename: str) -> tuple[pd.DataFrame, float, float]:
      # Reading with pandas
@@ -56,20 +53,8 @@ def optimise_emsi_start(ecfdf, ecf_start, emsidf, emsi_start):
     emsi_useful = emsidf.loc[(emsidf.t > roi_start-10-emsi_start) & (emsidf.t < roi_end+10-emsi_start)]
     emsi_useful.loc[:, 't'] = emsi_useful.t+emsi_start-roi_start
     ecf_useful.loc[:, 't'] = ecf_useful.t+ecf_start-roi_start
-    # emsi_useful = 
-    # print(roi_start-10-emsi_start)
-    # print(roi_end+10-emsi_start)
-    # plt.figure()
-    # plt.plot(ecf_useful.t, ecf_useful.I)
-    # plt.plot(emsi_useful.t, emsi_useful.I)
-    # plt.show()
-    # print(roi_start)
-    # print(roi_end)
-    # print((ecfdf.t > roi_start-ecf_start) & (ecfdf.t < roi_end-ecf_start))
-    # print(ecf_useful)
-    # print(emsi_useful)
+
     def fit(shift: float) -> float:
-        # print(f"{shift = }\n{scale = }")
         loss = np.sum(np.square(1000*emsi_useful.I - np.interp(emsi_useful.t, ecf_useful.t+shift, ecf_useful.I)))
         return loss
     shift = minimize(fit, 1).x
