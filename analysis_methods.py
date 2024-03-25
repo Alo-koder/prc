@@ -1,16 +1,27 @@
 import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks, convolve
+from config import props
 
-def data_cleaning(data:pd.DataFrame, pert_times:np.ndarray, props:dict):
+def data_cleaning(data:pd.DataFrame, pert_times:np.ndarray):
     '''
     Prepare the data for analysis by removing noise and (potentially)
     removing the perturbations from the current signal.
     '''
-    pass # This should be experiment-specific. Maybe add a list of bad data
-         # and how much to smoothen it in the config file.
 
-def find_cycles(data:pd.DataFrame, pert_times:np.ndarray, props:dict):
+    for start, end in props.bad_data:
+        data = data.drop([(data.t>start) & (data.t<end)])
+    data = data.reset_index(drop = True)
+    
+    data.I = convolve(data.I, [0.5, 0.5])
+
+
+    return data
+
+
+
+
+def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
     '''
     An abstract method for finding cycles. 
     
@@ -37,7 +48,7 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray, props:dict):
             had_pert            : True if a perturbation occured
                                   within this period
     '''
-    det_points = globals()[f'_{props.find_cycles_method}'](data, pert_times, props)
+    det_points = globals()[f'_{props.find_cycles_method}'](data, pert_times)
     period_durations = np.diff(det_points, append = np.nan)
 
     period_fit = np.polyfit(det_points[:-1], period_durations[:-1], 2)
@@ -70,7 +81,7 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray, props:dict):
     cycles.reset_index(drop=True, inplace=True)
     return cycles
 
-def _find_cycles_crossings(data:pd.DataFrame, pert_times:np.ndarray, props:dict,
+def _find_cycles_crossings(data:pd.DataFrame, pert_times:np.ndarray,
                            phase_det_direction:int = -1,
                            threshold_I_multiplier:float = 1.0):
     '''
