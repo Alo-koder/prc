@@ -10,8 +10,11 @@ def find_perts(data:pd.DataFrame) -> np.ndarray:
     Find the perturbation times using voltage or light data.
     '''
     if props.pert_type == 'light':
-        peak_indicies = find_peaks(data.light*np.sign(props.pert_strength) - data.t)[0]
+        # peak_indicies = find_peaks(data.light*np.sign(props.pert_strength) - data.t)[0]
+        # peak_times = np.array(data.loc[peak_indicies, 't'])
+        peak_indicies = find_peaks(np.diff(data.I, n=2, prepend=0, append=0), height=0.0001)[0]
         peak_times = np.array(data.loc[peak_indicies, 't'])
+        peak_times = peak_times[np.diff(peak_times, prepend=0) > 1]
         return peak_times
     elif props.pert_type == 'U':
         peak_indicies = find_peaks(data.U*np.sign(props.pert_strength) - data.t)[0]
@@ -22,28 +25,36 @@ def find_perts(data:pd.DataFrame) -> np.ndarray:
 
 
 
-def data_cleaning(data:pd.DataFrame, pert_times:np.ndarray):
+def data_cleaning(data:pd.DataFrame):
     '''
     Prepare the data for analysis by removing noise and (potentially)
     removing the perturbations from the current signal.
     '''
-
+    data = data[data.t > 300]
     for start, end in props.bad_data:
-        data = data.drop([(data.t>start) & (data.t<end)])
+        data = data([(data.t<start) & (data.t>end)])
     data = data.reset_index(drop = True)
     data.I = convolve(data.I, [0.5, 0.5])[:-1]
+    return data
+    
+def data_interpolation(data:pd.DataFrame, pert_times:np.ndarray):
     if props.interpolation == 'linear':
         for t in pert_times:
-            low, high = t-1, t+2
-            affected_range = (data.t > low) & (data.t < high)
-            data.loc[affected_range, 'I'] = np.interp(data.loc[affected_range, 't'], (low, high), (data.loc[data.t == low, 'I'], data.loc[data.t == high, 'I']))
+            data.loc[(data['t'] > t-0.1) & (data['t'] < t+props.pert_dt+0.1), 'I'] = np.nan
+        data['I'] = np.interp(data['t'], data.loc[data['I'].notna() ,'t'], data.loc[data['I'].notna(), 'I'])
+
     elif props.interpolation == 'cubic':
-        surrounding = data[((data.t>t-20) & (data.t<t-0.1)) | ((data.t>t+4) & (data.t<t+24))]
-        fit = CubicSpline(surrounding.t, surrounding.I)
-        affected = data[(data['t'] > t-0.1) & (data['t'] < t+4)]
-        data.loc[(data['t'] > t-0.1) & (data['t'] < t+4), 'I'] = fit(affected.t)
+        for t in pert_times:
+            surrounding = data[((data.t>t-20) & (data.t<t-0.1)) | ((data.t>t+4) & (data.t<t+24))]
+            fit = CubicSpline(surrounding.t, surrounding.I)
+            affected = data[(data['t'] > t-0.1) & (data['t'] < t+4)]
+            data.loc[(data['t'] > t-0.1) & (data['t'] < t+4), 'I'] = fit(affected.t)
+    
+    else:
+        raise ValueError(f'Invalid interpolation type: {props.interpolation}')
 
     return data
+
 
 
 def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
@@ -74,13 +85,14 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
                                   within this period
     '''
     # det_points = globals()[f'_{props.find_cycles_method}'](data, pert_times)
-    det_points = _find_cycles_peaks(data, pert_times)
+    det_points = globals()[f'_find_cycles_{props.period_measurement}'](data, pert_times)
     period_durations = np.diff(det_points, append = np.nan)
 
     period_fit = np.polyfit(det_points[:-1], period_durations[:-1], 2)
     expected_duration = np.polyval(period_fit, det_points)
 
     perturbed_periods = np.searchsorted(det_points, np.array(pert_times))-1
+    perturbed_periods = perturbed_periods[perturbed_periods>=0]
 
     cycles = pd.DataFrame({
                             'start'             : det_points,
@@ -108,7 +120,7 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
     return cycles
 
 def _find_cycles_crossings(data:pd.DataFrame, pert_times:np.ndarray,
-                           phase_det_direction:int = -1,
+                           phase_det_direction:int = 1,
                            threshold_I_multiplier:float = 1.0):
     '''
     Cycle determination based on the current crossing a threshold value.
@@ -132,7 +144,55 @@ def _find_cycles_peaks(data:pd.DataFrame, pert_times:np.ndarray):
     peak_indicies, _ = find_peaks(data.I, height = 0.7*top_current, prominence=0.7*current_range)
     return np.array(data.loc[peak_indicies, 't'])
 
-def pert_response(cycles, pert_times):
+def phase_correction(data, perts, cycles):
+    '''
+    Account for different phase determination method by offseting phase
+    such that max current means phase = 0.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Experimental data
+    perts_pos : pd.DataFrame
+        Data on the perturbations
+    cycles : pd.DataFrame
+        Period data
+    mean_period : float
+        Mean cycle duration in seconds
+
+    Returns
+    -------
+    perts : pd.DataFrame
+        Updated perts dataframe with a new column: corrected_phase
+    correction : float
+        Average osc phase of current spikes (calculated with a relative method)
+    '''
+    spikes, _ = find_peaks(data['I'], height=0.03, distance=1000)
+    spike_times = data['t'].iloc[spikes[10:-2]].reset_index(drop=True)
+    in_which_period = np.searchsorted(cycles['start'], np.array(spike_times))-1
+
+    cycles_useful = cycles.iloc[in_which_period].reset_index(drop=True)
+
+    phase = (spike_times-cycles_useful['start'])/cycles_useful['expected_duration']
+
+    if (phase>1.5).any():
+        print('Warning! Bad spikes data.')
+        print(phase[phase>1.5])
+    spike_times = spike_times[(phase<1.5)]
+    phase = phase[(phase<1.5)]
+
+    phase_fit = np.polyfit(spike_times, phase, 5)
+    correction = np.polyval(phase_fit, perts.time)
+
+
+    print(f'{np.nanmedian(correction) = }')
+    corrected_phase = (perts['phase']-correction)%1
+    perts = perts.assign(corrected_phase = corrected_phase)
+
+    return perts
+
+
+def pert_response(data, cycles, pert_times):
     '''
     Create a dataframe with data about the perturbations.
 
@@ -183,4 +243,6 @@ def pert_response(cycles, pert_times):
                         'expected_period'   : expected_period,
                         })
 
+    if props.period_measurement == 'crossings':
+        perts = phase_correction(data, perts, cycles)
     return perts
