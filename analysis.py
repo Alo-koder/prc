@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks, convolve
+from scipy.interpolate import CubicSpline
 from config import props
 
 
@@ -30,9 +31,17 @@ def data_cleaning(data:pd.DataFrame, pert_times:np.ndarray):
     for start, end in props.bad_data:
         data = data.drop([(data.t>start) & (data.t<end)])
     data = data.reset_index(drop = True)
-    
-    data.I = convolve(data.I, [0.5, 0.5])
-
+    data.I = convolve(data.I, [0.5, 0.5])[:-1]
+    if props.interpolation == 'linear':
+        for t in pert_times:
+            low, high = t-1, t+2
+            affected_range = (data.t > low) & (data.t < high)
+            data.loc[affected_range, 'I'] = np.interp(data.loc[affected_range, 't'], (low, high), (data.loc[data.t == low, 'I'], data.loc[data.t == high, 'I']))
+    elif props.interpolation == 'cubic':
+        surrounding = data[((data.t>t-20) & (data.t<t-0.1)) | ((data.t>t+4) & (data.t<t+24))]
+        fit = CubicSpline(surrounding.t, surrounding.I)
+        affected = data[(data['t'] > t-0.1) & (data['t'] < t+4)]
+        data.loc[(data['t'] > t-0.1) & (data['t'] < t+4), 'I'] = fit(affected.t)
 
     return data
 
@@ -64,7 +73,8 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
             had_pert            : True if a perturbation occured
                                   within this period
     '''
-    det_points = globals()[f'_{props.find_cycles_method}'](data, pert_times)
+    # det_points = globals()[f'_{props.find_cycles_method}'](data, pert_times)
+    det_points = _find_cycles_peaks(data, pert_times)
     period_durations = np.diff(det_points, append = np.nan)
 
     period_fit = np.polyfit(det_points[:-1], period_durations[:-1], 2)
@@ -109,10 +119,68 @@ def _find_cycles_crossings(data:pd.DataFrame, pert_times:np.ndarray,
     threshold_I = data.I.mean()*threshold_I_multiplier
     data['I_relative'] = data.I-threshold_I
 
-    # Calculate crossings and create 'cycles' dataframe
+    # Calculate crossings
     crossings = data[(np.diff(np.sign(data.I_relative), append=0) == 2*phase_det_direction)]
+    return np.array(crossings.t)
 
-def _find_perts_light(data:pd.DataFrame):
-    peak_indicies = find_peaks(data.light-data.t)[0]
-    peak_times = np.array(data.loc[peak_indicies, 't'])
-    return peak_times
+def _find_cycles_peaks(data:pd.DataFrame, pert_times:np.ndarray):
+    # Current characteristics:
+    bottom_current, top_current = np.percentile(data[data.I.notna()].I, [1, 99])
+    current_range = top_current - bottom_current
+
+    # peak_indicies, _ = find_peaks(-data.I, height = -1.1*bottom_current, prominence=0.5*current_range)
+    peak_indicies, _ = find_peaks(data.I, height = 0.7*top_current, prominence=0.7*current_range)
+    return np.array(data.loc[peak_indicies, 't'])
+
+def pert_response(cycles, pert_times):
+    '''
+    Create a dataframe with data about the perturbations.
+
+    Parameters
+    ----------
+    cycles : pd.DataFrame
+        A dataframe describing period information
+            start -- t at which phase == 0
+            duration -- T of this period
+    pert_times : np.ndarray
+    pert_direction : np.ndarray
+
+    Returns
+    -------
+    perts : pd.DataFrame
+        A dataframe describing information about each perturbation
+            time -- start of the perturbation
+            which_period -- index of the cycle in which pert occured
+            phase -- osc phase at which pert occured relative to I crossing
+            response -- phase response over current and next period
+                as a fraction of a mean period
+    '''
+
+    which_period = np.searchsorted(cycles['start'], np.array(pert_times))-1
+    
+    period_fit = np.polyfit(cycles['start'], cycles['duration'], 5) #change back to 5!
+    expected_period = np.polyval(period_fit, pert_times)
+    # expected_period = np.average([cycles.duration[which_period-i] for i in range(1,4)], axis=0)
+    # expected_period = np.array(cycles.duration[which_period-2])
+
+    phase = (pert_times-cycles['start'].iloc[which_period])/expected_period
+
+    response = []
+    duration = np.array(cycles['duration'])
+    basis = -(duration[which_period-1]-expected_period)/expected_period
+    for i in range(4):
+        response.append(-(duration[which_period+i]-expected_period)/expected_period)
+
+    perts = pd.DataFrame({'time'            : pert_times,
+                        'which_period'      : which_period,
+                        'phase'             : phase,
+                        'basis'             : basis,
+                        'response'          : np.sum(response[0:2], axis=0),
+                        'response_0'        : response[0],
+                        'response_1'        : response[1],
+                        'response_2'        : response[2],
+                        'response_3'        : response[3],
+                        'expected_period'   : expected_period,
+                        })
+
+    return perts
