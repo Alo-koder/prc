@@ -104,12 +104,12 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
 
     # Purging bad cycles
     cycles.drop(cycles.tail(1).index, inplace=True) # Drop last row
-    if (cycles.isna().any(axis=None) or (cycles['duration'] > props.max_duration).any()):
+    if (cycles.isna().any(axis=None) or (cycles['duration'] > props.max_period).any()):
             print(f'Warning! Some info might be wrong/missing')
             print(cycles[cycles.isna().any(axis=1)])
-            print(cycles[cycles['duration'] > props.max_duration])
+            print(cycles[cycles['duration'] > props.max_period])
     cycles = cycles[~cycles.isna().any(axis=1)]
-    cycles = cycles[cycles['duration'] < props.max_duration]
+    cycles = cycles[cycles['duration'] < props.max_period]
 
 
     # Recalculate expected duration

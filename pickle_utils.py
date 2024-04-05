@@ -5,7 +5,7 @@ from datetime import datetime
 from scipy.optimize import minimize
 
 def read_emsi(emsi_filename: str) -> tuple[pd.DataFrame, float, float]:
-     # Reading with pandas
+    # Reading with pandas
     emsidf = pd.read_csv(emsi_filename, sep='\t', skiprows = 5)
     new_col_names = {
         'Time [s]'  : 't',
@@ -18,7 +18,7 @@ def read_emsi(emsi_filename: str) -> tuple[pd.DataFrame, float, float]:
     emsidf['U'] = -emsidf['U']
     emsidf['I'] = -emsidf['I']
 
-   # Converting start time to uts
+    # Converting start time to uts
     with open(emsi_filename, 'r') as file:
         first_line = file.readline()
     date_str = first_line.split(': ')[1][:-1]
