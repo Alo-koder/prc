@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks, convolve
 from scipy.interpolate import CubicSpline
+from scipy.ndimage import gaussian_filter1d
 from config import props
 
 
@@ -30,7 +31,7 @@ def data_cleaning(data:pd.DataFrame):
     Prepare the data for analysis by removing noise and (potentially)
     removing the perturbations from the current signal.
     '''
-    data = data[data.t > 300]
+    data = data[data.t-data.t[0] > 300]
     for start, end in props.bad_data:
         data = data([(data.t<start) & (data.t>end)])
     data = data.reset_index(drop = True)
@@ -218,10 +219,12 @@ def pert_response(data, cycles, pert_times):
 
     which_period = np.searchsorted(cycles['start'], np.array(pert_times))-1
     
-    period_fit = np.polyfit(cycles['start'], cycles['duration'], 5) #change back to 5!
-    expected_period = np.polyval(period_fit, pert_times)
-    # expected_period = np.average([cycles.duration[which_period-i] for i in range(1,4)], axis=0)
-    # expected_period = np.array(cycles.duration[which_period-2])
+    # period_fit = np.polyfit(cycles['start'], cycles['duration'], 5) #change back to 5!
+    # expected_period = np.polyval(period_fit, pert_times)
+    # expected_period = np.average([cycles.duration[which_period-i] for i in range(1,5)], axis=0)
+    # expected_period = np.array(cycles.duration[which_period-1])
+    smoothened_periods = gaussian_filter1d(cycles.duration, 15)
+    expected_period = np.interp(pert_times, cycles.start, smoothened_periods)
 
     phase = (pert_times-cycles['start'].iloc[which_period])/expected_period
 
