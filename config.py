@@ -2,7 +2,7 @@ import munch
 import yaml
 
 DEVICE = 'tum_local'
-DATE = '03-25'
+DATE = '02-21'
 
 if DEVICE == 'laptop':
     filenames_dict = {
@@ -27,6 +27,15 @@ else:
 
 with open(filenames_dict['data'] + 'properties.yaml') as file:
     props_dict = yaml.safe_load(file)
+
+defaults = {
+    'bad_data': [],
+    'max_period': 80,
+    'interpolation': 'cubic',
+    'period_measurement': 'peaks',
+}
+
+props_dict = defaults | props_dict
 
 filenames:munch.Munch = munch.munchify(filenames_dict)
 props:munch.Munch = munch.munchify(props_dict)
