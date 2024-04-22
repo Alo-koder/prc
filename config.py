@@ -1,8 +1,8 @@
 import munch
 import yaml
 
-DEVICE = 'tum_local'
-DATE = '02-21'
+DEVICE = 'laptop'
+DATE = '03-13'
 
 if DEVICE == 'laptop':
     filenames_dict = {
@@ -33,6 +33,7 @@ defaults = {
     'max_period': 80,
     'interpolation': 'cubic',
     'period_measurement': 'peaks',
+    'expected_period': 'polyfit',
 }
 
 props_dict = defaults | props_dict
