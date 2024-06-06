@@ -13,7 +13,7 @@ def find_perts(data:pd.DataFrame) -> np.ndarray:
     if props.pert_type == 'light':
         # peak_indicies = find_peaks(data.light*np.sign(props.pert_strength) - data.t)[0]
         # peak_times = np.array(data.loc[peak_indicies, 't'])
-        h = 0.0001 if props.pert_strength > 0 else 0.001
+        h = 0.001 if props.pert_strength > 0 else 0.01
         # The system is not sensitive to positive perturbations at low currents.
 
         peak_indicies = find_peaks(np.diff(data.I, n=2, prepend=0, append=0), height=h)[0]
@@ -118,7 +118,7 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
             print(cycles[cycles.isna().any(axis=1)])
             print(cycles[cycles['duration'] > props.max_period])
     cycles = cycles[~cycles.isna().any(axis=1)]
-    # cycles = cycles[cycles['duration'] < props.max_period]
+    cycles = cycles[cycles['duration'] < props.max_period]
     cycles = cycles[cycles['duration'] > 20]
 
 
