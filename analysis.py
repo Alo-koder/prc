@@ -13,7 +13,7 @@ def find_perts(data:pd.DataFrame) -> np.ndarray:
     if props.pert_type == 'light':
         # peak_indicies = find_peaks(data.light*np.sign(props.pert_strength) - data.t)[0]
         # peak_times = np.array(data.loc[peak_indicies, 't'])
-        h = 0.001 if props.pert_strength > 0 else 0.01
+        h = 0.01 # if props.pert_strength > 0 else 0.001
         # The system is not sensitive to positive perturbations at low currents.
 
         peak_indicies = find_peaks(np.diff(data.I, n=2, prepend=0, append=0), height=h)[0]
@@ -25,6 +25,7 @@ def find_perts(data:pd.DataFrame) -> np.ndarray:
         peak_indicies = find_peaks(data.U*np.sign(props.pert_strength) - data.t)[0]
         peak_times = np.array(data.loc[peak_indicies, 't'])
         peak_times = peak_times[np.abs(data.U[data.t.isin(peak_times)]-(props.voltage+props.pert_strength)) < 0.1]
+        print(f'Found {peak_times.size} perts')
         return peak_times
     else:
         raise ValueError(f'Invalid perturbation type: {props.pert_type}')

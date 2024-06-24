@@ -2,7 +2,7 @@ import munch
 import yaml
 
 DEVICE = 'tum'
-DATE = '03-13'
+DATE = '06-17'
 
 if DEVICE == 'laptop':
     filenames_dict = {

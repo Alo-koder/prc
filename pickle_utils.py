@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime
 from scipy.optimize import minimize
 from scipy.signal import find_peaks
-from scipy.ndimage import convolve1d
+from scipy.ndimage import convolve1d, gaussian_filter1d
 
 def read_emsi(emsi_filename: str) -> tuple[pd.DataFrame, float, float]:
     # Reading with pandas
@@ -45,6 +45,17 @@ def read_ecf(ecf_filename: str) -> tuple[pd.DataFrame, float]:
     ecfdf = ecfdf.rename(columns = new_col_names)
 
     return ecfdf, start_time
+
+def read_photodiode(ph_filename):
+    with open(ph_filename) as file:
+        ph_start_str = file.readline().split(sep='\t')[-1][:-1]
+    date_obj = datetime.strptime(ph_start_str, "%Y-%m-%d %H:%M:%S")
+    ph_start = date_obj.timestamp()
+
+    phdf = pd.read_csv(ph_filename, sep='\t', decimal=',', skiprows=1, header=None)
+    phdf.columns = ['t', 'photodiode']
+    phdf.t = phdf.t.astype(float)
+    return phdf, ph_start
 
 
 
@@ -87,5 +98,29 @@ def alt_opt_emsi_start(ecfdf, ecf_start, emsidf, emsi_start):
         loss = np.median(np.min(np.abs(np.subtract.outer(emsi_spikes, ecf_spikes+shift)), axis=1))
         return loss
     shift = minimize(fit, 1).x
+    print(shift)
+    return shift
+
+def optimise_emsi_start_voltage(ecfdf, ecf_start, emsidf, emsi_start, basis_voltage, pert_strength):
+    roi_start = max(ecf_start, emsi_start) + 600
+    roi_end = roi_start + min(ecfdf.t.iloc[-1], emsidf.t.iloc[-1]) - 1200
+    ecf_useful = ecfdf.loc[(ecfdf.t > roi_start-ecf_start) & (ecfdf.t < roi_end-ecf_start)].reset_index(drop=True)
+    emsi_useful = emsidf.loc[(emsidf.t > roi_start-10-emsi_start) & (emsidf.t < roi_end+10-emsi_start)].reset_index(drop=True)
+    emsi_useful.U = gaussian_filter1d(emsi_useful.U, 2)
+    emsi_useful.loc[:, 't'] = emsi_useful.t+emsi_start-roi_start
+    ecf_useful.loc[:, 't'] = ecf_useful.t+ecf_start-roi_start
+
+    peak_indicies = find_peaks(ecf_useful.U*np.sign(pert_strength) - ecf_useful.t)[0]
+    peak_times = np.array(ecf_useful.loc[peak_indicies, 't'])
+    peak_times_ecf = peak_times[np.abs(ecf_useful.U[ecf_useful.t.isin(peak_times)]-(basis_voltage+pert_strength)) < 0.1]
+
+    peak_indicies = find_peaks(emsi_useful.U*np.sign(pert_strength) - 5*emsi_useful.t)[0]
+    peak_times = np.array(emsi_useful.loc[peak_indicies, 't'])
+    peak_times_emsi = peak_times[np.abs(emsi_useful.U[emsi_useful.t.isin(peak_times)]-(basis_voltage+pert_strength)) < 0.1]
+    if peak_times_emsi[0] < 0:
+        peak_times_emsi = peak_times_emsi[1:]
+    if peak_times_emsi.size > peak_times_ecf.size:
+        peak_times_emsi = peak_times_emsi[:-1]
+    shift = np.median(peak_times_emsi-peak_times_ecf)
     print(shift)
     return shift
