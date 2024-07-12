@@ -13,12 +13,18 @@ def find_perts(data:pd.DataFrame) -> np.ndarray:
     if props.pert_type == 'light':
         # peak_indicies = find_peaks(data.light*np.sign(props.pert_strength) - data.t)[0]
         # peak_times = np.array(data.loc[peak_indicies, 't'])
-        h = 0.01 # if props.pert_strength > 0 else 0.001
+        # h = 0.01 # if props.pert_strength > 0 else 0.001
+        normal, perturbed = min(data.light*np.sign(props.pert_strength)), max(data.light*np.sign(props.pert_strength))
+        middle = (normal + perturbed)/2
+        centered = data.light-np.sign(props.pert_strength)*middle
+
+        peak_times = data.t[np.diff(np.sign(centered), append=0) > 0]
+
         # The system is not sensitive to positive perturbations at low currents.
 
-        peak_indicies = find_peaks(np.diff(data.I, n=2, prepend=0, append=0), height=h)[0]
-        peak_times = np.array(data.loc[peak_indicies, 't'])
-        peak_times = peak_times[np.diff(peak_times, prepend=0) > 1]
+        # peak_indicies = find_peaks(np.diff(data.I, n=2, prepend=0, append=0), height=h)[0]
+        # peak_times = np.array(data.loc[peak_indicies, 't'])
+        # peak_times = peak_times[np.diff(peak_times, prepend=0) > 1]
         print(f'Found {peak_times.size} perts')
         return peak_times
     elif props.pert_type == 'U':
@@ -52,7 +58,7 @@ def data_interpolation(data:pd.DataFrame, pert_times:np.ndarray):
 
     elif props.interpolation == 'cubic':
         for t in pert_times:
-            surrounding = data[((data.t>t-20) & (data.t<t-0.1)) | ((data.t>t+4) & (data.t<t+24))]
+            surrounding = data[((data.t>t-20) & (data.t<t-0.2)) | ((data.t>t+4) & (data.t<t+24))]
             fit = CubicSpline(surrounding.t, surrounding.I)
             affected = data[(data['t'] > t-0.1) & (data['t'] < t+4)]
             data.loc[(data['t'] > t-0.1) & (data['t'] < t+4), 'I'] = fit(affected.t)
@@ -243,7 +249,7 @@ def pert_response(data, cycles, pert_times):
     else:
         raise ValueError(f'Unknown expected period determination method: {props.expected_period}')
 
-    phase = (pert_times-cycles['start'].iloc[which_period])/expected_period
+    phase = (pert_times-np.array(cycles['start'].iloc[which_period]))/expected_period
 
     response = []
     duration = np.array(cycles['duration'])
