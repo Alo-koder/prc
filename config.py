@@ -1,8 +1,8 @@
 import munch
 import yaml
 
-DEVICE = 'laptop'
-DATE = '02-15'
+DEVICE = 'tum'
+DATE = '06-17'
 
 if DEVICE == 'laptop':
     filenames_dict = {
@@ -12,7 +12,7 @@ if DEVICE == 'laptop':
 
 elif DEVICE == 'tum':
     filenames_dict = {
-        'data' : 'T:/Team/Szewczyk/Data/2023-'+DATE+'/',
+        'data' : 'T:/Team/Szewczyk/Data/2024-'+DATE+'/',
         'notes' : 'C:/Users/go68nim/OneDrive - University of Edinburgh/Notes/Lab/experiments/plots/'+DATE[1:]+'/'
     }
 
