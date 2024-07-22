@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
-from scipy.signal import find_peaks, convolve
+from scipy.signal import find_peaks, convolve, sosfilt, butter
 from scipy.interpolate import CubicSpline
 from scipy.ndimage import gaussian_filter1d
 from config import props
+from matplotlib import pyplot as plt
 
 
 def find_perts(data:pd.DataFrame) -> np.ndarray:
@@ -162,7 +163,17 @@ def _find_cycles_peaks(data:pd.DataFrame, pert_times:np.ndarray):
     peak_indicies, _ = find_peaks(data.I, height = 0.7*top_current, prominence=0.7*current_range)
     return np.array(data.loc[peak_indicies, 't'])
 
-def phase_correction(data, perts, cycles):
+def _find_cycles_emsi(data:pd.DataFrame, pert_times):
+    true_emsi = np.array(data.emsi)[::10]
+    sos = butter(10, 0.1, fs=10, output='sos')
+    filtered_emsi = sosfilt(sos, true_emsi)
+    troughs, _ = find_peaks(-filtered_emsi)
+    return np.array(data.t)[::10][troughs]
+
+def phase_correction_emsi_minimum(data, cycles):
+    pass
+
+def phase_correction_current_minimum(data, perts, cycles):
     '''
     Account for different phase determination method by offseting phase
     such that max current means phase = 0.
@@ -270,5 +281,5 @@ def pert_response(data, cycles, pert_times):
                         })
 
     if props.period_measurement == 'crossings':
-        perts = phase_correction(data, perts, cycles)
+        perts = phase_correction_current_minimum(data, perts, cycles)
     return perts
