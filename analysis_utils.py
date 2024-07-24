@@ -1,3 +1,8 @@
+'''
+A collection of methods used in the `analysis' notebooks.
+'''
+
+
 import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks, convolve, sosfilt, butter
@@ -9,15 +14,23 @@ from matplotlib import pyplot as plt
 
 def find_perts(data:pd.DataFrame) -> np.ndarray:
     '''
-    Find the perturbation times using voltage or light data.
+    Find the perturbation times using voltage, light or current data.
+
+    For voltage perturbation the choice is always voltage-based determination.
+    Light perturbations are more difficult to get right, because of two problems:
+    1. Photodiode/LC voltage data isn't properly synced,
+    which causes a systematic error in pert phase;
+    this is especially problematic when it comes to pert masking in current.
+    2. Current-based pert determination fails when the response is small,
+    e.g. -ve light pert when the base current is low anyway.
     '''
     if props.pert_type == 'light':
-        # peak_indicies = find_peaks(data.light*np.sign(props.pert_strength) - data.t)[0]
+        # peak_indicies = find_peaks(data.LC_voltage*np.sign(props.pert_strength) - data.t)[0]
         # peak_times = np.array(data.loc[peak_indicies, 't'])
         # h = 0.01 # if props.pert_strength > 0 else 0.001
-        normal, perturbed = min(data.light*np.sign(props.pert_strength)), max(data.light*np.sign(props.pert_strength))
+        normal, perturbed = min(data.LC_voltage*np.sign(props.pert_strength)), max(data.LC_voltage*np.sign(props.pert_strength))
         middle = (normal + perturbed)/2
-        centered = data.light-np.sign(props.pert_strength)*middle
+        centered = data.LC_voltage-np.sign(props.pert_strength)*middle
 
         peak_times = data.t[np.diff(np.sign(centered), append=0) > 0]
 
@@ -85,26 +98,22 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
     pert_times  : np.ndarray
         Times of disturbances in the signal. Some implementations
         will ignore the perturbation current.
-    props  : dict
-        Properties of the experiment, as listed in the config.yaml file.
-        Implementation is chosen based on them.        
 
     Returns
     -------
     cycles      : pd.DataFrame
         A dataframe describing period information.
-        Index:
-            start               : t at which phase = 0
         Columns:
+            start               : t at which phase = 0
             duration            : T of this cycle
             expected_duration   : predicted unperturbed T
             had_pert            : True if a perturbation occured
                                   within this period
     '''
-    # det_points = globals()[f'_{props.find_cycles_method}'](data, pert_times)
+    # The following line points to one of the period det. methods defined below
     det_points = globals()[f'_find_cycles_{props.period_measurement}'](data, pert_times)
-    period_durations = np.diff(det_points, append = np.nan)
 
+    period_durations = np.diff(det_points, append = np.nan)
     period_fit = np.polyfit(det_points[:-1], period_durations[:-1], 2)
     expected_duration = np.polyval(period_fit, det_points)
 
@@ -125,12 +134,13 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
             print(f'Warning! Some info might be wrong/missing')
             print(cycles[cycles.isna().any(axis=1)])
             print(cycles[cycles['duration'] > props.max_period])
+
     cycles = cycles[~cycles.isna().any(axis=1)]
     cycles = cycles[cycles['duration'] < props.max_period]
     cycles = cycles[cycles['duration'] > 20]
 
 
-    # Recalculate expected duration
+    # Recalculate expected duration using a quadratic fit
     period_fit = np.polyfit(cycles['start'], cycles['duration'], 2)
     cycles['expected_duration'] = np.polyval(period_fit, cycles['start'])
 
@@ -155,25 +165,33 @@ def _find_cycles_crossings(data:pd.DataFrame, pert_times:np.ndarray,
     return np.array(crossings.t)
 
 def _find_cycles_peaks(data:pd.DataFrame, pert_times:np.ndarray):
+    '''
+    Cycle determination based on finding peak current.
+    Can cause problems with linear current interpolation.
+    '''
     # Current characteristics:
     bottom_current, top_current = np.percentile(data[data.I.notna()].I, [1, 99])
     current_range = top_current - bottom_current
 
-    # peak_indicies, _ = find_peaks(-data.I, height = -1.1*bottom_current, prominence=0.5*current_range)
     peak_indicies, _ = find_peaks(data.I, height = 0.7*top_current, prominence=0.7*current_range)
     return np.array(data.loc[peak_indicies, 't'])
 
 def _find_cycles_emsi(data:pd.DataFrame, pert_times):
+    '''
+    Cycle determination based on emsi signal only.
+
+    pro: doesn't require purging data from the pert-induced spikes.
+    con: emsi data is only 10Hz, therefore period data is less acurate.
+    Warning! Emsi data will have a different definition of phase = 0! (emsi min.)
+    '''
     true_emsi = np.array(data.emsi)[::10]
     sos = butter(10, 0.1, fs=10, output='sos')
     filtered_emsi = sosfilt(sos, true_emsi)
     troughs, _ = find_peaks(-filtered_emsi)
     return np.array(data.t)[::10][troughs]
 
-def phase_correction_emsi_minimum(data, cycles):
-    pass
 
-def phase_correction_current_minimum(data, perts, cycles):
+def phase_correction(data, perts, cycles):
     '''
     Account for different phase determination method by offseting phase
     such that max current means phase = 0.
@@ -281,5 +299,5 @@ def pert_response(data, cycles, pert_times):
                         })
 
     if props.period_measurement == 'crossings':
-        perts = phase_correction_current_minimum(data, perts, cycles)
+        perts = phase_correction(data, perts, cycles)
     return perts

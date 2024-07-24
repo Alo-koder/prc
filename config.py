@@ -1,8 +1,17 @@
+"""
+Read and interpret .yaml config files.
+
+Usage: change DEVICE and DATE variables according to what needs to be analysed and where.
+Adding new config: simply add new case to the DEVICE if statement.
+Set the 'data' filename to the folder containing experimental data.
+Any figures will be saved in the 'notes' folder.
+"""
+
 import munch
 import yaml
 
 DEVICE = 'tum'
-DATE = '06-17'
+DATE = '02-22'
 
 if DEVICE == 'laptop':
     filenames_dict = {
