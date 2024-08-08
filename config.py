@@ -6,19 +6,25 @@ DATE = '06-17'
 
 if DEVICE == 'laptop':
     filenames_dict = {
-        'data' : '/mnt/Szewczyk/Data/2024-'+DATE+'/',
-        'notes' : '~/Onedrive/Notes/Lab/experiments/plots/'+DATE[1:]+'/'
+        'data'  : '/mnt/Szewczyk/Data/2024-'+DATE+'/',
+        'notes' : '~/OneDrive/Notes/Lab/experiments/plots/'+DATE[1:]+'/'
+    }
+
+if DEVICE == 'laptop_local':
+    filenames_dict = {
+        'data'  : '/run/media/alo/0CD4823BD48226D4/Szewczyk/Data/2024'+DATE+'/',
+        'notes' : '~/OneDrive/Notes/Lab/experiments/plots/'+DATE[1:]+'/'
     }
 
 elif DEVICE == 'tum':
     filenames_dict = {
-        'data' : 'T:/Team/Szewczyk/Data/2024-'+DATE+'/',
+        'data'  : 'T:/Team/Szewczyk/Data/2024-'+DATE+'/',
         'notes' : 'C:/Users/go68nim/OneDrive - University of Edinburgh/Notes/Lab/experiments/plots/'+DATE[1:]+'/'
     }
 
 elif DEVICE == 'tum_local':
     filenames_dict = {
-        'data' : 'D:/Alek/Data/'+DATE[1:]+'-',
+        'data'  : 'D:/Alek/Data/'+DATE[1:]+'-',
         'notes' : 'C:/Users/go68nim/OneDrive - University of Edinburgh/Notes/Lab/experiments/plots/'+DATE[1:]+'/'
     }
 
