@@ -1,19 +1,19 @@
 import munch
 import yaml
 
-DEVICE = 'tum'
-DATE = '06-17'
+DEVICE = 'laptop_local'
+DATE = '02-22'
 
 if DEVICE == 'laptop':
     filenames_dict = {
         'data'  : '/mnt/Szewczyk/Data/2024-'+DATE+'/',
-        'notes' : '~/OneDrive/Notes/Lab/experiments/plots/'+DATE[1:]+'/'
+        'notes' : '/home/alo/OneDrive/Notes/Lab/experiments/plots/'+DATE[1:]+'/'
     }
 
 if DEVICE == 'laptop_local':
     filenames_dict = {
-        'data'  : '/run/media/alo/0CD4823BD48226D4/Szewczyk/Data/2024'+DATE+'/',
-        'notes' : '~/OneDrive/Notes/Lab/experiments/plots/'+DATE[1:]+'/'
+        'data'  : '/run/media/alo/0CD4823BD48226D4/Szewczyk/Data/2024-'+DATE+'/',
+        'notes' : '/home/alo/OneDrive/Notes/Lab/experiments/plots/'+DATE[1:]+'/'
     }
 
 elif DEVICE == 'tum':

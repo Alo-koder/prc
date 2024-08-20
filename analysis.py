@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from scipy.signal import find_peaks, convolve, sosfilt, butter
+from scipy.signal import find_peaks, convolve, sosfiltfilt, butter
 from scipy.interpolate import CubicSpline
 from scipy.ndimage import gaussian_filter1d
 from config import props
@@ -166,12 +166,23 @@ def _find_cycles_peaks(data:pd.DataFrame, pert_times:np.ndarray):
 def _find_cycles_emsi(data:pd.DataFrame, pert_times):
     true_emsi = np.array(data.emsi)[::10]
     sos = butter(10, 0.1, fs=10, output='sos')
-    filtered_emsi = sosfilt(sos, true_emsi)
+    filtered_emsi = sosfiltfilt(sos, true_emsi)
     troughs, _ = find_peaks(-filtered_emsi)
     return np.array(data.t)[::10][troughs]
 
-def phase_correction_emsi_minimum(data, cycles):
-    pass
+def phase_correction_emsi_minimum(data, perts, cycles):
+    troughs = _find_cycles_emsi(data, None)[5:]
+    in_which_period = np.searchsorted(cycles['start'], np.array(troughs))-1
+    cycles_useful = cycles.iloc[in_which_period].reset_index(drop=True)
+    phase = (troughs-cycles_useful['start'])/cycles_useful['expected_duration']
+
+
+    correction = np.nanmedian(phase)
+    print(f'{np.nanmedian(phase) = }')
+    corrected_phase = (perts['phase']-correction)%1
+    perts = perts.assign(corrected_phase = corrected_phase)
+
+    return perts
 
 def phase_correction_current_minimum(data, perts, cycles):
     '''
