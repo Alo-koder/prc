@@ -46,6 +46,21 @@ def read_ecf(ecf_filename: str) -> tuple[pd.DataFrame, float]:
 
     return ecfdf, start_time
 
+def read_ecf_text(ecf_text_filename: str):
+    with open(ecf_text_filename) as file:
+        lines = file.readlines()
+    Nb_header_lines = int(lines[1].split(' : ')[-1])
+    header_lines = lines[:Nb_header_lines-1]
+
+    ecf_start_string = [s.split(' : ')[-1][:-1] for s in header_lines if 'Acquisition started on' in s][0]
+    ecf_start_obj = datetime.strptime(ecf_start_string, "%m/%d/%Y %H:%M:%S.%f")
+    ecf_start = ecf_start_obj.timestamp()
+
+    ecfdf = pd.read_csv(ecf_text_filename, decimal=',', names=['t', 'U', 'I'],
+                        sep='\t', skiprows=Nb_header_lines, encoding='ANSI')
+
+    return ecfdf, ecf_start
+    
 def read_photodiode(ph_filename):
     with open(ph_filename) as file:
         ph_start_str = file.readline().split(sep='\t')[-1][:-1]
