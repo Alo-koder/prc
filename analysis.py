@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks, convolve, sosfiltfilt, butter
-from scipy.interpolate import CubicSpline
+from scipy.interpolate import CubicSpline, splrep, splev
 from scipy.ndimage import gaussian_filter1d
 from config import props
 from matplotlib import pyplot as plt
@@ -73,6 +73,18 @@ def data_interpolation(data:pd.DataFrame, pert_times:np.ndarray):
     return data
 
 
+def correct_emsi(data:pd.DataFrame):
+    true_emsi = np.array(data.emsi[::10])
+    sos = butter(10, 0.1, fs=10, output='sos')
+    filtered_emsi = sosfiltfilt(sos, true_emsi)
+    emsi_long_term_fit = np.polyfit(data.t[::10], filtered_emsi, 3)
+    tck = splrep(data.t[::10], filtered_emsi)
+    high_res_emsi = splev(data.t, tck)
+    emsi_corrected = high_res_emsi - np.polyval(emsi_long_term_fit, data.t)
+    emsi_corrected = emsi_corrected/2/(np.percentile(emsi_corrected, 99) - np.percentile(emsi_corrected, 1))
+    data['emsi_corrected'] = emsi_corrected
+    return data
+
 
 def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
     '''
@@ -104,6 +116,9 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
     # det_points = globals()[f'_{props.find_cycles_method}'](data, pert_times)
     det_points = globals()[f'_find_cycles_{props.period_measurement}'](data, pert_times)
     period_durations = np.diff(det_points, append = np.nan)
+    amplitudes = np.array(data.I[data.t.isin(det_points)])
+    amplitude_fit = np.polyfit(det_points, amplitudes, 2)
+    expected_amplitude = np.polyval(amplitude_fit, det_points)
 
     period_fit = np.polyfit(det_points[:-1], period_durations[:-1], 2)
     expected_duration = np.polyval(period_fit, det_points)
@@ -115,6 +130,8 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
                             'start'             : det_points,
                             'duration'          : period_durations,
                             'expected_duration' : expected_duration,
+                            'amplitude'         : amplitudes,
+                            'expected_amplitude': expected_amplitude,
                             'had_pert'          : False,
                         })
     cycles.loc[perturbed_periods, 'had_pert'] = True
@@ -164,11 +181,8 @@ def _find_cycles_peaks(data:pd.DataFrame, pert_times:np.ndarray):
     return np.array(data.loc[peak_indicies, 't'])
 
 def _find_cycles_emsi(data:pd.DataFrame, pert_times):
-    true_emsi = np.array(data.emsi)[::10]
-    sos = butter(10, 0.1, fs=10, output='sos')
-    filtered_emsi = sosfiltfilt(sos, true_emsi)
-    troughs, _ = find_peaks(-filtered_emsi)
-    return np.array(data.t)[::10][troughs]
+    troughs, _ = find_peaks(-data.emsi_corrected)
+    return np.array(data.t)[troughs]
 
 def phase_correction_emsi_minimum(data, perts, cycles):
     troughs = _find_cycles_emsi(data, None)[5:]
@@ -273,22 +287,34 @@ def pert_response(data, cycles, pert_times):
 
     phase = (pert_times-np.array(cycles['start'].iloc[which_period]))/expected_period
 
-    response = []
+    phase_response = []
     duration = np.array(cycles['duration'])
     basis = -(duration[which_period-1]-expected_period)/expected_period
     for i in range(4):
-        response.append(-(duration[which_period+i]-expected_period)/expected_period)
+        phase_response.append(-(duration[which_period+i]-expected_period)/expected_period)
+
+    amplitude_response = []
+    expected_amplitude = np.interp(pert_times, cycles.start, cycles.expected_amplitude)
+    amplitudes = np.array(cycles.amplitude)
+    basis_amplitude = (amplitudes[which_period-1]-expected_amplitude)/expected_amplitude
+    for i in range(4):
+        amplitude_response.append((amplitudes[which_period+i]-expected_amplitude)/expected_amplitude)
 
     perts = pd.DataFrame({'time'            : pert_times,
                         'which_period'      : which_period,
                         'phase'             : phase,
                         'basis'             : basis,
-                        'response'          : np.sum(response[0:2], axis=0),
-                        'response_0'        : response[0],
-                        'response_1'        : response[1],
-                        'response_2'        : response[2],
-                        'response_3'        : response[3],
+                        'response'          : np.sum(phase_response[0:2], axis=0),
+                        'response_0'        : phase_response[0],
+                        'response_1'        : phase_response[1],
+                        'response_2'        : phase_response[2],
+                        'response_3'        : phase_response[3],
                         'expected_period'   : expected_period,
+                        'basis_amplitude'   : basis_amplitude,
+                        'amp_response'      : amplitude_response[0],
+                        'amp_response_1'    : amplitude_response[1],
+                        'amp_response_2'    : amplitude_response[2],
+                        'amp_response_3'    : amplitude_response[3],
                         })
 
     if props.period_measurement == 'crossings':
