@@ -62,7 +62,11 @@ def read_ecf(ecf_filename: str) -> tuple[pd.DataFrame, float]:
         A pandas data frame with all useful potentiostat data
     start_time      : float
         UTS timestamp of the experiment's start
-    '''
+    '''    
+    try:
+        import eclabfiles as ecf
+    except ImportError:
+        print("eclabfiles not available")
     ecfdf = ecf.to_df(ecf_filename)
     start_time = ecfdf.uts[0]
 
