@@ -1,8 +1,20 @@
+'''
+Import the measurement metadata (such as basis voltage, pert. duration etc.) from a config file.
+
+The DEVICE and DATE constants are meant to be changed by the user.
+`filenames_dict` specifies file locations:
+'data' is the folder from which the datafile will be read;
+'notes' specifies where the plots will be saved
+'''
+
+
 import munch
 import yaml
 
-DEVICE = 'laptop_local'
-DATE = '02-22'
+# CHANGE CONFIG HERE
+DEVICE = 'tum'
+DATE = '03-12'
+# CHANGE CONFIG HERE
 
 if DEVICE == 'laptop':
     filenames_dict = {
@@ -42,7 +54,7 @@ defaults = {
     'expected_period': 'polyfit',
 }
 
-props_dict = defaults | props_dict
+props_dict = defaults | props_dict # this means: if a property isn't specified in the config file, use the default
 
 filenames:munch.Munch = munch.munchify(filenames_dict)
 props:munch.Munch = munch.munchify(props_dict)

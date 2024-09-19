@@ -1,0 +1,17 @@
+---
+codename: A019                    # experimental prefix
+date: 2024-02-22                  # year-month-day, leading zeros
+el_name: blue                     # doesn't matter
+el_area: 11                       # active electrode area in mm^2
+voltage: 6                        # basis unperturbed voltage
+CV_file: '00'                     # string specifying last two digits of CV file
+illumination: 1000                # basis unperturbed electrode illumination in μW
+osc_type: LA                      # LA, HA or high-ill_HA
+pert_type: U                      # U or light
+pert_strength: 0.3                # in volts for voltage, in μW for light
+pert_dt: 1                        # perturbation duration in seconds
+max_period: 75                    # maximum period, used to clean sus periods that are too long
+interpolation: cubic              # interp. of the current: linear, cubic or none
+period_measurement: peaks         # peaks or emsi
+bad_data:                         # list of start, stop time values in seconds
+  - []                            # when current was heavily distorted
