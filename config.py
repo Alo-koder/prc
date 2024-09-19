@@ -1,8 +1,8 @@
 import munch
 import yaml
 
-DEVICE = 'laptop_local'
-DATE = '02-22'
+DEVICE = 'tum'
+DATE = '03-12'
 
 if DEVICE == 'laptop':
     filenames_dict = {

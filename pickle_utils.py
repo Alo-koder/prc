@@ -83,15 +83,15 @@ def optimise_emsi_start(ecfdf, ecf_start, emsidf, emsi_start):
     ecf_useful.loc[:, 't'] = ecf_useful.t+ecf_start-roi_start
 
     def fit(shift: float) -> float:
-        loss = np.sum(np.square(1000*emsi_useful.I - np.interp(emsi_useful.t, ecf_useful.t+shift, ecf_useful.I)))
+        loss = np.sum(np.square(emsi_useful.I - np.interp(emsi_useful.t, ecf_useful.t+shift, ecf_useful.I)))
         return loss
-    shift = minimize(fit, 1).x
-    print(shift)
+    shift = minimize(fit, 1).x[0]
+    print(f"{shift = }")
     return shift
 
 def alt_opt_emsi_start(ecfdf, ecf_start, emsidf, emsi_start):
     roi_start = max(ecf_start, emsi_start) + 600
-    roi_end = roi_start + 6600
+    roi_end = roi_start + 600
     ecf_useful = ecfdf.loc[(ecfdf.t > roi_start-ecf_start) & (ecfdf.t < roi_end-ecf_start)]
     emsi_useful = emsidf.loc[(emsidf.t > roi_start-10-emsi_start) & (emsidf.t < roi_end+10-emsi_start)]
     emsi_useful.loc[:, 't'] = emsi_useful.t+emsi_start-roi_start
@@ -99,16 +99,20 @@ def alt_opt_emsi_start(ecfdf, ecf_start, emsidf, emsi_start):
     emsi_useful = emsi_useful.reset_index(drop=True)
     ecf_useful = ecf_useful.reset_index(drop=True)
 
-    emsi_peak_indicies = find_peaks(np.diff(emsi_useful.I, n=2, prepend=0, append=0), height=0.01)[0]
-    emsi_spikes = np.array(emsi_useful.loc[emsi_peak_indicies, 't'])
-    ecf_peak_indicies = find_peaks(np.diff(ecf_useful.I, n=2, prepend=0, append=0), height=0.01)[0]
-    ecf_spikes = np.array(ecf_useful.loc[ecf_peak_indicies, 't'])
+    # emsi_peak_indicies = find_peaks(np.diff(emsi_useful.I, n=1, prepend=0, append=0), height=0.03)[0]
+    # emsi_spikes = np.array(emsi_useful.loc[emsi_peak_indicies, 't'])
+    # ecf_peak_indicies = find_peaks(np.diff(ecf_useful.I, n=1, prepend=0, append=0), height=0.03)[0]
+    # ecf_spikes = np.array(ecf_useful.loc[ecf_peak_indicies, 't'])
 
-    emsi_spikes = np.array(emsi_useful.t[find_peaks(emsi_useful.I, height = 0.035, prominence = 0.02)[0]])
-    ecf_spikes = np.array(ecf_useful.t[find_peaks(ecf_useful.I, height = 0.035, prominence = 0.02)[0]])
+    # emsi_spikes = np.array(emsi_useful.t[find_peaks(emsi_useful.I, height = 0.035, prominence = 0.02, distance = 5/(emsi_useful.t.iloc[1]-emsi_useful.t.iloc[0]))[0]])
+    # ecf_spikes = np.array(ecf_useful.t[find_peaks(ecf_useful.I, height = 0.035, prominence = 0.02, distance=5/(ecf_useful.t.iloc[1]-ecf_useful.t.iloc[0]))[0]])
 
-    print(ecf_spikes)
-    print(emsi_spikes)
+    emsi_spikes = np.array(emsi_useful.t[find_peaks(emsi_useful.I, height = 0.095)[0]])
+    ecf_spikes = np.array(ecf_useful.t[find_peaks(ecf_useful.I, height = 3.9)[0]])
+
+
+    print(ecf_spikes.size)
+    print(emsi_spikes.size)
     def fit(shift:float) -> float:
         loss = np.median(np.min(np.abs(np.subtract.outer(emsi_spikes, ecf_spikes+shift)), axis=1))
         return loss

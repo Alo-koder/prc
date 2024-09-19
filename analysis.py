@@ -14,18 +14,20 @@ def find_perts(data:pd.DataFrame) -> np.ndarray:
     if props.pert_type == 'light':
         # peak_indicies = find_peaks(data.light*np.sign(props.pert_strength) - data.t)[0]
         # peak_times = np.array(data.loc[peak_indicies, 't'])
-        # h = 0.01 # if props.pert_strength > 0 else 0.001
-        normal, perturbed = min(data.light*np.sign(props.pert_strength)), max(data.light*np.sign(props.pert_strength))
-        middle = (normal + perturbed)/2
-        centered = data.light-np.sign(props.pert_strength)*middle
 
-        peak_times = data.t[np.diff(np.sign(centered), append=0) > 0]
+        # normal, perturbed = min(data.light*np.sign(props.pert_strength)), max(data.light*np.sign(props.pert_strength))
+        # middle = (normal + perturbed)/2
+        # centered = data.light-np.sign(props.pert_strength)*middle
+
+        # peak_times = data.t[np.diff(np.sign(centered), append=0) > 0]
 
         # The system is not sensitive to positive perturbations at low currents.
 
-        # peak_indicies = find_peaks(np.diff(data.I, n=2, prepend=0, append=0), height=h)[0]
-        # peak_times = np.array(data.loc[peak_indicies, 't'])
-        # peak_times = peak_times[np.diff(peak_times, prepend=0) > 1]
+        h = 0.001 # if props.pert_strength > 0 else 0.001
+        peak_indicies = find_peaks(np.diff(data.I, n=2, prepend=0, append=0), height=h)[0]
+        peak_times = np.array(data.loc[peak_indicies, 't'])
+        peak_times = peak_times[np.diff(peak_times, prepend=0) > 2]
+
         print(f'Found {peak_times.size} perts')
         return peak_times
     elif props.pert_type == 'U':
@@ -54,15 +56,15 @@ def data_cleaning(data:pd.DataFrame):
 def data_interpolation(data:pd.DataFrame, pert_times:np.ndarray):
     if props.interpolation == 'linear':
         for t in pert_times:
-            data.loc[(data['t'] > t-0.1) & (data['t'] < t+props.pert_dt+0.1), 'I'] = np.nan
+            data.loc[(data['t'] > t-0.2) & (data['t'] < t+props.pert_dt+0.2), 'I'] = np.nan
         data['I'] = np.interp(data['t'], data.loc[data['I'].notna() ,'t'], data.loc[data['I'].notna(), 'I'])
 
     elif props.interpolation == 'cubic':
         for t in pert_times:
-            surrounding = data[((data.t>t-20) & (data.t<t-0.2)) | ((data.t>t+4) & (data.t<t+24))]
+            surrounding = data[((data.t>t-20) & (data.t<t-0.2)) | ((data.t>t+3) & (data.t<t+24))]
             fit = CubicSpline(surrounding.t, surrounding.I)
-            affected = data[(data['t'] > t-0.1) & (data['t'] < t+4)]
-            data.loc[(data['t'] > t-0.1) & (data['t'] < t+4), 'I'] = fit(affected.t)
+            affected = data[(data['t'] > t-0.1) & (data['t'] < t+3)]
+            data.loc[(data['t'] > t-0.1) & (data['t'] < t+3), 'I'] = fit(affected.t)
     
     elif props.interpolation == 'none':
         pass
@@ -117,7 +119,7 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
     det_points = globals()[f'_find_cycles_{props.period_measurement}'](data, pert_times)
     period_durations = np.diff(det_points, append = np.nan)
     amplitudes = np.array(data.I[data.t.isin(det_points)])
-    amplitude_fit = np.polyfit(det_points, amplitudes, 2)
+    amplitude_fit = np.polyfit(det_points, amplitudes, 5)
     expected_amplitude = np.polyval(amplitude_fit, det_points)
 
     period_fit = np.polyfit(det_points[:-1], period_durations[:-1], 2)
@@ -177,12 +179,12 @@ def _find_cycles_peaks(data:pd.DataFrame, pert_times:np.ndarray):
     current_range = top_current - bottom_current
 
     # peak_indicies, _ = find_peaks(-data.I, height = -1.1*bottom_current, prominence=0.5*current_range)
-    peak_indicies, _ = find_peaks(data.I, height = 0.7*top_current, prominence=0.7*current_range)
+    peak_indicies, _ = find_peaks(data.I, height = 0.7*top_current, prominence=0.5*current_range)
     return np.array(data.loc[peak_indicies, 't'])
 
 def _find_cycles_emsi(data:pd.DataFrame, pert_times):
     troughs, _ = find_peaks(-data.emsi_corrected)
-    return np.array(data.t)[troughs]
+    return np.array(data.t)[troughs[1:-1]]
 
 def phase_correction_emsi_minimum(data, perts, cycles):
     troughs = _find_cycles_emsi(data, None)[5:]
