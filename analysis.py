@@ -1,3 +1,10 @@
+'''
+A collection of methods for analysing PRC determination experiments.
+
+They functions are meant to be used within the <prc_analysis.ipynb> jupyter notebook.
+'''
+
+
 import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks, convolve, sosfiltfilt, butter
@@ -9,57 +16,69 @@ from matplotlib import pyplot as plt
 
 def find_perts(data:pd.DataFrame) -> np.ndarray:
     '''
-    Find the perturbation times using voltage or light data.
+    Find the perturbations using voltage or light data.
     '''
     if props.pert_type == 'light':
-        # peak_indicies = find_peaks(data.light*np.sign(props.pert_strength) - data.t)[0]
+        normal, perturbed = min(data.light*np.sign(props.pert_strength)), max(data.light*np.sign(props.pert_strength))
+        middle = (normal + perturbed)/2
+        centered = data.light-np.sign(props.pert_strength)*middle # signal that is negative at rest, positive at perturbation
+
+        peak_times = data.t[np.diff(np.sign(centered), append=0) > 0]
+
+        # The code below can be more accurate when perturbations cause a large current jump.
+        # It looks for peaks of the second derivative of current.
+        # Uncomment the 4 lines below if you want to try it out:
+
+        # h = 0.001
+        # peak_indicies = find_peaks(np.diff(data.I, n=2, prepend=0, append=0), height=h)[0]
         # peak_times = np.array(data.loc[peak_indicies, 't'])
-
-        # normal, perturbed = min(data.light*np.sign(props.pert_strength)), max(data.light*np.sign(props.pert_strength))
-        # middle = (normal + perturbed)/2
-        # centered = data.light-np.sign(props.pert_strength)*middle
-
-        # peak_times = data.t[np.diff(np.sign(centered), append=0) > 0]
-
-        # The system is not sensitive to positive perturbations at low currents.
-
-        h = 0.001 # if props.pert_strength > 0 else 0.001
-        peak_indicies = find_peaks(np.diff(data.I, n=2, prepend=0, append=0), height=h)[0]
-        peak_times = np.array(data.loc[peak_indicies, 't'])
-        peak_times = peak_times[np.diff(peak_times, prepend=0) > 2]
+        # peak_times = peak_times[np.diff(peak_times, prepend=0) > 2]
 
         print(f'Found {peak_times.size} perts')
         return peak_times
+    
     elif props.pert_type == 'U':
         peak_indicies = find_peaks(data.U*np.sign(props.pert_strength) - data.t)[0]
         peak_times = np.array(data.loc[peak_indicies, 't'])
         peak_times = peak_times[np.abs(data.U[data.t.isin(peak_times)]-(props.voltage+props.pert_strength)) < 0.1]
         print(f'Found {peak_times.size} perts')
         return peak_times
+    
     else:
         raise ValueError(f'Invalid perturbation type: {props.pert_type}')
 
 
 
-def data_cleaning(data:pd.DataFrame):
+def data_cleaning(data:pd.DataFrame) -> pd.DataFrame:
     '''
     Prepare the data for analysis by removing noise and (potentially)
-    removing the perturbations from the current signal.
+    removing unusable parts of the current signal.
     '''
     data = data[data.t > 300]
     for start, end in props.bad_data:
         data = data[((data.t<start) | (data.t>end))]
     data = data.reset_index(drop = True)
-    data.I = convolve(data.I, [0.5, 0.5])[:-1]
+    data['I_real'] = convolve(data.I, [0.5, 0.5])[:-1] # Removes 50Hz noise
+    data.drop(columns='I')
     return data
     
-def data_interpolation(data:pd.DataFrame, pert_times:np.ndarray):
+
+def data_interpolation(data:pd.DataFrame, pert_times:np.ndarray) -> pd.DataFrame:
+    '''
+    Remove current outliers caused by perturbations from the current signal.
+
+    The current signal around the perturbations is cut out
+    and later interpolated from the surrounding.
+    '''
+    data['I'] = data.I_real.copy()
     if props.interpolation == 'linear':
         for t in pert_times:
-            data.loc[(data['t'] > t-0.2) & (data['t'] < t+props.pert_dt+0.2), 'I'] = np.nan
-        data['I'] = np.interp(data['t'], data.loc[data['I'].notna() ,'t'], data.loc[data['I'].notna(), 'I'])
+            left_bound = t-0.2
+            right_bound = t+props.pert_dt+0.2
+            data.loc[(data.t > left_bound) & (data.t < right_bound), 'I'] = np.nan # nullify data between two bounds
+        data['I'] = np.interp(data.t, data.loc[data.I_real.notna() ,'t'], data.loc[data.I.notna(), 'I_real'])
 
-    elif props.interpolation == 'cubic':
+    elif props.interpolation == 'cubic': #TODO this can be improved with sine least square fitting
         for t in pert_times:
             surrounding = data[((data.t>t-20) & (data.t<t-0.2)) | ((data.t>t+3) & (data.t<t+24))]
             fit = CubicSpline(surrounding.t, surrounding.I)
@@ -75,11 +94,16 @@ def data_interpolation(data:pd.DataFrame, pert_times:np.ndarray):
     return data
 
 
-def correct_emsi(data:pd.DataFrame):
-    true_emsi = np.array(data.emsi[::10])
-    sos = butter(10, 0.1, fs=10, output='sos')
+def correct_emsi(data:pd.DataFrame) -> pd.DataFrame:
+    '''
+    Smoothen and normalise emsi data.
+
+    Emsi is normalised to be between -0.5 and +0.5.
+    '''
+    true_emsi = np.array(data.emsi[::10])       # Emsi is currently recorded at 10Hz.
+    sos = butter(10, 0.1, fs=10, output='sos')  # The 100Hz signal is linearly interpolated by the LabView program.
     filtered_emsi = sosfiltfilt(sos, true_emsi)
-    emsi_long_term_fit = np.polyfit(data.t[::10], filtered_emsi, 3)
+    emsi_long_term_fit = np.polyfit(data.t[::10], filtered_emsi, 2) # Removes some emsi drift; it's not perfect.
     tck = splrep(data.t[::10], filtered_emsi)
     high_res_emsi = splev(data.t, tck)
     emsi_corrected = high_res_emsi - np.polyval(emsi_long_term_fit, data.t)
@@ -107,19 +131,17 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
     -------
     cycles      : pd.DataFrame
         A dataframe describing period information.
-        Index:
-            start               : t at which phase = 0
         Columns:
+            start               : t at which phase = 0
             duration            : T of this cycle
             expected_duration   : predicted unperturbed T
             had_pert            : True if a perturbation occured
                                   within this period
     '''
-    # det_points = globals()[f'_{props.find_cycles_method}'](data, pert_times)
-    det_points = globals()[f'_find_cycles_{props.period_measurement}'](data, pert_times)
+    det_points = globals()[f'_find_cycles_{props.period_measurement}'](data)
     period_durations = np.diff(det_points, append = np.nan)
     amplitudes = np.array(data.I[data.t.isin(det_points)])
-    amplitude_fit = np.polyfit(det_points, amplitudes, 5)
+    amplitude_fit = np.polyfit(det_points, amplitudes, 4)
     expected_amplitude = np.polyval(amplitude_fit, det_points)
 
     period_fit = np.polyfit(det_points[:-1], period_durations[:-1], 2)
@@ -156,40 +178,56 @@ def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
     cycles.reset_index(drop=True, inplace=True)
     return cycles
 
-def _find_cycles_crossings(data:pd.DataFrame, pert_times:np.ndarray,
+def _find_cycles_crossings(data:pd.DataFrame,
                            phase_det_direction:int = 1,
                            threshold_I_multiplier:float = 1.0):
     '''
-    Cycle determination based on the current crossing a threshold value.
-    The outcome can be affected by oscillation shape changes.
+    DEPRECATED Cycle determination based on the current crossing a threshold value.
+    
+    The outcome will be affected by oscillation shape changes.
+    In general, not very accurate. Left here for consistency but shouldn't be used.
     '''
-
     # Calculate current relative to the threshold
     threshold_I = data.I.mean()*threshold_I_multiplier
     data['I_relative'] = data.I-threshold_I
-    print("I'm here")
 
     # Calculate crossings
     crossings = data[(np.diff(np.sign(data.I_relative), append=0) == 2*phase_det_direction)]
     return np.array(crossings.t)
 
-def _find_cycles_peaks(data:pd.DataFrame, pert_times:np.ndarray):
+def _find_cycles_peaks(data:pd.DataFrame):
+    """
+    Cycle determination based on current peaks.
+
+    Currently the most accurate method. Should be used by default.
+    """
     # Current characteristics:
     bottom_current, top_current = np.percentile(data[data.I.notna()].I, [1, 99])
     current_range = top_current - bottom_current
 
-    # peak_indicies, _ = find_peaks(-data.I, height = -1.1*bottom_current, prominence=0.5*current_range)
     peak_indicies, _ = find_peaks(data.I, height = 0.7*top_current, prominence=0.5*current_range)
-    return np.array(data.loc[peak_indicies, 't'])
+    return np.array(data.loc[peak_indicies[1:-1], 't'])
 
-def _find_cycles_emsi(data:pd.DataFrame, pert_times):
+def _find_cycles_emsi(data:pd.DataFrame):
+    '''
+    Cycle determination based on emsi minima.
+
+    pro:  Doesn't rely on current fitting.
+    con:  Slightly less accurate than current peaks.
+    '''
     troughs, _ = find_peaks(-data.emsi_corrected)
     return np.array(data.t)[troughs[1:-1]]
 
 def phase_correction_emsi_minimum(data, perts, cycles):
-    troughs = _find_cycles_emsi(data, None)[5:]
+    '''
+    Assign a new column: "corrected phase" to the `perts` dataframe.
+
+    "corrected_phase" is the phase shifted such that on average
+    the emsi minimum has phase = 0.
+    '''
+    troughs = _find_cycles_emsi(data)[5:]
     in_which_period = np.searchsorted(cycles['start'], np.array(troughs))-1
-    cycles_useful = cycles.iloc[in_which_period].reset_index(drop=True)
+    cycles_useful = cycles.iloc[in_which_period].reset_index(drop=True) # cycles that were perturbed
     phase = (troughs-cycles_useful['start'])/cycles_useful['expected_duration']
 
 
@@ -200,28 +238,27 @@ def phase_correction_emsi_minimum(data, perts, cycles):
 
     return perts
 
-def phase_correction_current_minimum(data, perts, cycles):
+def phase_correction_current_maximum(data, perts, cycles):
     '''
-    Account for different phase determination method by offseting phase
+    DEPRECATED Account for different phase determination method by offseting phase
     such that max current means phase = 0.
+
+    Not used anymore -- phase is shifted either to emsi minimum <phase_correction_emsi_minimum>
+    or left at phase==0 <=> current peak, as determined.
 
     Parameters
     ----------
-    data : pd.DataFrame
+    data    : pd.DataFrame
         Experimental data
-    perts_pos : pd.DataFrame
-        Data on the perturbations
-    cycles : pd.DataFrame
-        Period data
-    mean_period : float
-        Mean cycle duration in seconds
+    perts   : pd.DataFrame
+        Info on all perturbations
+    cycles  : pd.DataFrame
+        Info on all periods
 
     Returns
     -------
     perts : pd.DataFrame
         Updated perts dataframe with a new column: corrected_phase
-    correction : float
-        Average osc phase of current spikes (calculated with a relative method)
     '''
     spikes, _ = find_peaks(data['I'], height=0.03, distance=1000)
     spike_times = data['t'].iloc[spikes[10:-2]].reset_index(drop=True)
@@ -264,12 +301,14 @@ def pert_response(data, cycles, pert_times):
     Returns
     -------
     perts : pd.DataFrame
-        A dataframe describing information about each perturbation
-            time -- start of the perturbation
-            which_period -- index of the cycle in which pert occured
-            phase -- osc phase at which pert occured relative to I crossing
-            response -- phase response over current and next period
-                as a fraction of a mean period
+        A dataframe describing information about each perturbation.
+        Columns:
+            time            : start of the perturbation
+            which_period    : index of the cycle in which pert occured
+            phase           : osc phase at which pert occured relative to
+                              the period determination point (usually current maximum)
+            response        : phase response over current and next period
+                              as a fraction of a mean period
     '''
 
     which_period = np.searchsorted(cycles['start'], np.array(pert_times))-1
@@ -298,8 +337,8 @@ def pert_response(data, cycles, pert_times):
     amplitude_response = []
     expected_amplitude = np.interp(pert_times, cycles.start, cycles.expected_amplitude)
     amplitudes = np.array(cycles.amplitude)
-    basis_amplitude = (amplitudes[which_period-1]-expected_amplitude)/expected_amplitude
-    for i in range(4):
+    basis_amplitude = (amplitudes[which_period]-expected_amplitude)/expected_amplitude
+    for i in range(1,4):
         amplitude_response.append((amplitudes[which_period+i]-expected_amplitude)/expected_amplitude)
 
     perts = pd.DataFrame({'time'            : pert_times,
@@ -307,18 +346,17 @@ def pert_response(data, cycles, pert_times):
                         'phase'             : phase,
                         'basis'             : basis,
                         'response'          : np.sum(phase_response[0:2], axis=0),
-                        'response_0'        : phase_response[0],
-                        'response_1'        : phase_response[1],
-                        'response_2'        : phase_response[2],
-                        'response_3'        : phase_response[3],
+                        'response_1'        : phase_response[0],
+                        'response_2'        : phase_response[1],
+                        'response_3'        : phase_response[2],
+                        'response_4'        : phase_response[3],
                         'expected_period'   : expected_period,
                         'basis_amplitude'   : basis_amplitude,
-                        'amp_response'      : amplitude_response[0],
-                        'amp_response_1'    : amplitude_response[1],
-                        'amp_response_2'    : amplitude_response[2],
-                        'amp_response_3'    : amplitude_response[3],
+                        'amp_response_1'    : amplitude_response[0],
+                        'amp_response_2'    : amplitude_response[1],
+                        'amp_response_3'    : amplitude_response[2],
                         })
 
     if props.period_measurement == 'crossings':
-        perts = phase_correction_current_minimum(data, perts, cycles)
+        perts = phase_correction_current_maximum(data, perts, cycles)
     return perts

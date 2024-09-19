@@ -3,24 +3,37 @@ import eclabfiles as ecf
 import numpy as np
 from datetime import datetime
 from scipy.optimize import minimize
-from scipy.signal import find_peaks
-from scipy.ndimage import convolve1d, gaussian_filter1d
+
 
 def read_emsi(emsi_filename: str) -> tuple[pd.DataFrame, float, float]:
-    # Reading with pandas
+    '''
+    Read the emsi `.dat` files.
+
+    Parameters
+    ----------
+    emsi_filename   : str
+
+    Returns
+    -------
+    emsidf          : pd.DataFrame
+    start_time      : float
+        UTS timestamp at which the data in this file starts.
+    end_time        : float
+        UTS time of file end.
+    '''
     emsidf = pd.read_csv(emsi_filename, sep='\t', skiprows = 5)
-    new_col_names = {
+    new_col_names = { # original column names are super annoying to type
         'Time [s]'  : 't',
         'U [V]'     : 'U',
         'I [A]'     : 'I',
-        'Ill [V]'   : 'light',
-        'EMSI [%]'  : 'emsi',
+        'Ill [V]'   : 'light',  # voltage on the shutter;
+        'EMSI [%]'  : 'emsi',   # high voltage means loss light goes through
     }
     emsidf = emsidf.rename(columns = new_col_names)
-    emsidf['U'] = -emsidf['U']
+    emsidf['U'] = -emsidf['U']  # For some reason the setup reads electricity backwards
     emsidf['I'] = -emsidf['I']
 
-    # Converting start time to uts
+    # Converting start time to uts (unix time stamp)
     with open(emsi_filename, 'r') as file:
         first_line = file.readline()
     date_str = first_line.split(': ')[1][:-1]
@@ -30,8 +43,26 @@ def read_emsi(emsi_filename: str) -> tuple[pd.DataFrame, float, float]:
 
     return emsidf, start_time, end_time
 
-def read_ecf(ecf_filename: str) -> tuple[pd.DataFrame, float]:
 
+def read_ecf(ecf_filename: str) -> tuple[pd.DataFrame, float]:
+    '''
+    LEGACY Import the potentiostat data from a `.mpr` file.
+
+    This will not work with the newest version of the ECLab software.
+    Export the files to `.txt` and use `read_ecf_text()` instead.
+
+    Parameters
+    ----------
+    ecf_filename    : str
+        The `.mpr` measurement file
+
+    Returns
+    -------
+    ecfdf           : pd.DataFrame
+        A pandas data frame with all useful potentiostat data
+    start_time      : float
+        UTS timestamp of the experiment's start
+    '''
     ecfdf = ecf.to_df(ecf_filename)
     start_time = ecfdf.uts[0]
 
@@ -46,7 +77,23 @@ def read_ecf(ecf_filename: str) -> tuple[pd.DataFrame, float]:
 
     return ecfdf, start_time
 
-def read_ecf_text(ecf_text_filename: str):
+
+def read_ecf_text(ecf_text_filename: str) -> tuple[pd.DataFrame, float]:
+    '''
+    Import the potentiostat data from a text file.
+
+    Parameters
+    ----------
+    ecf_filename    : str
+        The exported `.txt` potentiostat data
+
+    Returns
+    -------
+    ecfdf           : pd.DataFrame
+        A pandas data frame with all useful potentiostat data
+    start_time      : float
+        UTS timestamp of the experiment's start
+    '''
     with open(ecf_text_filename) as file:
         lines = file.readlines()
     Nb_header_lines = int(lines[1].split(' : ')[-1])
@@ -56,12 +103,28 @@ def read_ecf_text(ecf_text_filename: str):
     ecf_start_obj = datetime.strptime(ecf_start_string, "%m/%d/%Y %H:%M:%S.%f")
     ecf_start = ecf_start_obj.timestamp()
 
+    # I assume you export time, voltage and current in that order.
+    # Otherwise change the `names` parameter below accordingly.
     ecfdf = pd.read_csv(ecf_text_filename, decimal=',', names=['t', 'U', 'I'],
                         sep='\t', skiprows=Nb_header_lines, encoding='ANSI')
 
     return ecfdf, ecf_start
     
-def read_photodiode(ph_filename):
+
+def read_photodiode(ph_filename: str) -> tuple[pd.DataFrame, float]:
+    '''
+    Read the photodiode data.
+
+    Parameters
+    ----------
+    ph_filename : str
+
+    Returns
+    -------
+    phdf        : pd.DataFrame
+    ph_start    : float
+        UTS timestamp of the beginnig of the photodiode reading.
+    '''
     with open(ph_filename) as file:
         ph_start_str = file.readline().split(sep='\t')[-1][:-1]
     date_obj = datetime.strptime(ph_start_str, "%Y-%m-%d %H:%M:%S")
@@ -69,12 +132,34 @@ def read_photodiode(ph_filename):
 
     phdf = pd.read_csv(ph_filename, sep='\t', decimal=',', skiprows=1, header=None)
     phdf.columns = ['t', 'photodiode']
-    phdf.t = phdf.t.astype(float)
-    return phdf, ph_start
+    phdf.photodiode *= 1000 # convert illumination from W to mW
+    phdf.t = phdf.t.astype(float)/1000  # by default the photodiode stores time in miliseconds;
+    return phdf, ph_start               # we convert it to seconds
 
 
 
-def optimise_emsi_start(ecfdf, ecf_start, emsidf, emsi_start):
+def optimise_emsi_start(ecfdf:pd.DataFrame, ecf_start:float, emsidf:pd.DataFrame, emsi_start:float) -> float:
+    '''
+    Finely adjust LabView recorded time to ensure sync with the potentiostat data.
+
+    LabView is annoying and stores the experiment start only with 1s accuracy.
+    Trusting this would cause a ~1s mismatch between `ecfdf` and `emsidf`.
+    Instead, LabView current data is fitted to the potentiostat's current
+    and the time shift that gives the best match is returned.
+
+    Parameters
+    ----------
+    ecfdf       : pd.DataFrame
+    ecf_start   : float (uts timestamp)
+    emsidf      : pd.DataFrame
+    emsi_start  : float (uts timestamp)
+
+    Returns
+    -------
+    shift       : float (uts timestamp)
+        `emsidf` time is lagging by [[shift]] seconds compared to `ecfdf`.
+    '''
+    
     roi_start = max(ecf_start, emsi_start) + 600
     roi_end = roi_start + 6600
     ecf_useful = ecfdf.loc[(ecfdf.t > roi_start-ecf_start) & (ecfdf.t < roi_end-ecf_start)]
@@ -87,59 +172,4 @@ def optimise_emsi_start(ecfdf, ecf_start, emsidf, emsi_start):
         return loss
     shift = minimize(fit, 1).x[0]
     print(f"{shift = }")
-    return shift
-
-def alt_opt_emsi_start(ecfdf, ecf_start, emsidf, emsi_start):
-    roi_start = max(ecf_start, emsi_start) + 600
-    roi_end = roi_start + 600
-    ecf_useful = ecfdf.loc[(ecfdf.t > roi_start-ecf_start) & (ecfdf.t < roi_end-ecf_start)]
-    emsi_useful = emsidf.loc[(emsidf.t > roi_start-10-emsi_start) & (emsidf.t < roi_end+10-emsi_start)]
-    emsi_useful.loc[:, 't'] = emsi_useful.t+emsi_start-roi_start
-    ecf_useful.loc[:, 't'] = ecf_useful.t+ecf_start-roi_start
-    emsi_useful = emsi_useful.reset_index(drop=True)
-    ecf_useful = ecf_useful.reset_index(drop=True)
-
-    # emsi_peak_indicies = find_peaks(np.diff(emsi_useful.I, n=1, prepend=0, append=0), height=0.03)[0]
-    # emsi_spikes = np.array(emsi_useful.loc[emsi_peak_indicies, 't'])
-    # ecf_peak_indicies = find_peaks(np.diff(ecf_useful.I, n=1, prepend=0, append=0), height=0.03)[0]
-    # ecf_spikes = np.array(ecf_useful.loc[ecf_peak_indicies, 't'])
-
-    # emsi_spikes = np.array(emsi_useful.t[find_peaks(emsi_useful.I, height = 0.035, prominence = 0.02, distance = 5/(emsi_useful.t.iloc[1]-emsi_useful.t.iloc[0]))[0]])
-    # ecf_spikes = np.array(ecf_useful.t[find_peaks(ecf_useful.I, height = 0.035, prominence = 0.02, distance=5/(ecf_useful.t.iloc[1]-ecf_useful.t.iloc[0]))[0]])
-
-    emsi_spikes = np.array(emsi_useful.t[find_peaks(emsi_useful.I, height = 0.095)[0]])
-    ecf_spikes = np.array(ecf_useful.t[find_peaks(ecf_useful.I, height = 3.9)[0]])
-
-
-    print(ecf_spikes.size)
-    print(emsi_spikes.size)
-    def fit(shift:float) -> float:
-        loss = np.median(np.min(np.abs(np.subtract.outer(emsi_spikes, ecf_spikes+shift)), axis=1))
-        return loss
-    shift = minimize(fit, 1).x
-    print(shift)
-    return shift
-
-def optimise_emsi_start_voltage(ecfdf, ecf_start, emsidf, emsi_start, basis_voltage, pert_strength):
-    roi_start = max(ecf_start, emsi_start) + 600
-    roi_end = roi_start + min(ecfdf.t.iloc[-1], emsidf.t.iloc[-1]) - 1200
-    ecf_useful = ecfdf.loc[(ecfdf.t > roi_start-ecf_start) & (ecfdf.t < roi_end-ecf_start)].reset_index(drop=True)
-    emsi_useful = emsidf.loc[(emsidf.t > roi_start-10-emsi_start) & (emsidf.t < roi_end+10-emsi_start)].reset_index(drop=True)
-    emsi_useful.U = gaussian_filter1d(emsi_useful.U, 2)
-    emsi_useful.loc[:, 't'] = emsi_useful.t+emsi_start-roi_start
-    ecf_useful.loc[:, 't'] = ecf_useful.t+ecf_start-roi_start
-
-    peak_indicies = find_peaks(ecf_useful.U*np.sign(pert_strength) - ecf_useful.t)[0]
-    peak_times = np.array(ecf_useful.loc[peak_indicies, 't'])
-    peak_times_ecf = peak_times[np.abs(ecf_useful.U[ecf_useful.t.isin(peak_times)]-(basis_voltage+pert_strength)) < 0.1]
-
-    peak_indicies = find_peaks(emsi_useful.U*np.sign(pert_strength) - 5*emsi_useful.t)[0]
-    peak_times = np.array(emsi_useful.loc[peak_indicies, 't'])
-    peak_times_emsi = peak_times[np.abs(emsi_useful.U[emsi_useful.t.isin(peak_times)]-(basis_voltage+pert_strength)) < 0.1]
-    if peak_times_emsi[0] < 0:
-        peak_times_emsi = peak_times_emsi[1:]
-    if peak_times_emsi.size > peak_times_ecf.size:
-        peak_times_emsi = peak_times_emsi[:-1]
-    shift = np.median(peak_times_emsi-peak_times_ecf)
-    print(shift)
     return shift
