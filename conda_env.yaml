@@ -8,8 +8,5 @@ dependencies:
   - pandas
   - scipy
   - matplotlib
-  - glob
-  - os
-  - datetime
   - munch
   - yaml

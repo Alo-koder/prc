@@ -15,7 +15,7 @@ Assuming you have it installed, you can simpy run the following commands
 from this folder:
 
 ``` bash
-conda env create f- conda_env.yaml
+conda env create -f conda_env.yaml
 conda activate prc
 pip install eclabfiles
 ```
