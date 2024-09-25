@@ -76,7 +76,7 @@ def data_interpolation(data:pd.DataFrame, pert_times:np.ndarray) -> pd.DataFrame
             left_bound = t-0.2
             right_bound = t+props.pert_dt+0.2
             data.loc[(data.t > left_bound) & (data.t < right_bound), 'I'] = np.nan # nullify data between two bounds
-        data['I'] = np.interp(data.t, data.loc[data.I_real.notna() ,'t'], data.loc[data.I.notna(), 'I_real'])
+        data['I'] = np.interp(data.t, data.loc[data.I.notna() ,'t'], data.loc[data.I.notna(), 'I_real'])
 
     elif props.interpolation == 'cubic': #TODO this can be improved with sine least square fitting
         for t in pert_times:
