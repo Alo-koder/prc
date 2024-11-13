@@ -12,8 +12,8 @@ import munch
 import yaml
 
 # CHANGE CONFIG HERE
-DEVICE = 'tum'
-DATE = '03-12'
+DEVICE = 'laptop_local'
+DATE = '06-10'
 # CHANGE CONFIG HERE
 
 if DEVICE == 'laptop':
@@ -24,7 +24,7 @@ if DEVICE == 'laptop':
 
 if DEVICE == 'laptop_local':
     filenames_dict = {
-        'data'  : '/run/media/alo/0CD4823BD48226D4/Szewczyk/Data/2024-'+DATE+'/',
+        'data'  : '/home/alo/prc_data/'+DATE[1:]+'/',
         'notes' : '/home/alo/OneDrive/Notes/Lab/experiments/plots/'+DATE[1:]+'/'
     }
 

@@ -13,3 +13,4 @@ dependencies:
   - datetime
   - munch
   - yaml
+  - nb-clean

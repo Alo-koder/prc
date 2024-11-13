@@ -7,7 +7,7 @@ They functions are meant to be used within the <prc_analysis.ipynb> jupyter note
 
 import pandas as pd
 import numpy as np
-from scipy.signal import find_peaks, convolve, sosfiltfilt, butter
+from scipy.signal import find_peaks, convolve, sosfiltfilt, butter, hilbert
 from scipy.interpolate import CubicSpline, splrep, splev
 from scipy.ndimage import gaussian_filter1d
 from config import props
@@ -99,11 +99,15 @@ def correct_emsi(data:pd.DataFrame) -> pd.DataFrame:
     Smoothen and normalise emsi data.
 
     Emsi is normalised to be between -0.5 and +0.5.
+    This is not an ideal way to do this. Big changes in signal
+    caused by data collection resetting are still present.
+    To get a smoother corrected signal, one needs to find a way
+    to fit the envelope of the signal instead of the oscillation as a whole.
     '''
     true_emsi = np.array(data.emsi[::10])       # Emsi is currently recorded at 10Hz.
     sos = butter(10, 0.1, fs=10, output='sos')  # The 100Hz signal is linearly interpolated by the LabView program.
     filtered_emsi = sosfiltfilt(sos, true_emsi)
-    emsi_long_term_fit = np.polyfit(data.t[::10], filtered_emsi, 2) # Removes some emsi drift; it's not perfect.
+    emsi_long_term_fit = np.polyfit(data.t[::10], filtered_emsi, 5) # Removes some emsi drift; it's not perfect.
     tck = splrep(data.t[::10], filtered_emsi)
     high_res_emsi = splev(data.t, tck)
     emsi_corrected = high_res_emsi - np.polyval(emsi_long_term_fit, data.t)
@@ -111,6 +115,29 @@ def correct_emsi(data:pd.DataFrame) -> pd.DataFrame:
     data['emsi_corrected'] = emsi_corrected
     return data
 
+
+def shift_emsi(data):
+    true_emsi = np.array(data.emsi[::10])
+    emsi_long_term_fit = np.polyfit(data.t[::10], true_emsi, 5)
+    emsi_shifted = (true_emsi - np.polyval(emsi_long_term_fit, data.t[::10]))
+    emsi_shifted = emsi_shifted/2/(np.percentile(emsi_shifted, 99) - np.percentile(emsi_shifted, 1))
+    data['emsi_shifted'] = np.interp(data.t, data.t[::10], emsi_shifted)
+    return data
+
+# def correct_emsi(data:pd.DataFrame) -> pd.DataFrame:
+#     '''
+#     Smoothen and normalise emsi data.
+
+#     Adds two new columns to `data`:
+#         - 'emsi_shifted' is roughly normalised to be between -0.5 and +0.5.
+#           The fit is highly distorted around LabVIEW data collection resetting (+-10%).
+#           Data retains spike-like drops in emsi signal due to bubbles crossing the FOV.
+#         - 'emsi_corrected' is a heavily smoothened version of emsi.
+#           Upside: data is smooth.
+#           Downside: amplitude will be distorted AND prop. of information back in time
+#           (this means when sth happens at t=500, you'll see the signal
+#           already changing at t=495).
+#     '''
 
 def find_cycles(data:pd.DataFrame, pert_times:np.ndarray):
     '''
@@ -287,7 +314,12 @@ def phase_correction_current_maximum(data, perts, cycles):
 
 def pert_response(data, cycles, pert_times):
     '''
-    Create a dataframe with data about the perturbations.
+    Calculate perturbation responses using predetermined cycles.
+
+    Cycle is defined as per chosen `find_cycle` method.
+    Pert response is calculated as relative elongation/shortening
+    of these cycles. When a pert happens close to a cycle determination point,
+    the boundary between 1st and 2nd PRC is poorly defined.
 
     Parameters
     ----------
@@ -360,3 +392,11 @@ def pert_response(data, cycles, pert_times):
     if props.period_measurement == 'crossings':
         perts = phase_correction_current_maximum(data, perts, cycles)
     return perts
+
+
+def calculate_HT(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Obtain Hilbert transforms of the emsi and current signals.
+    """
+    pass
+
